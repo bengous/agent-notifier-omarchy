@@ -5,7 +5,6 @@ use std::env;
 use std::io::{self, BufRead, BufReader, Read};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
@@ -32,8 +31,6 @@ use state::{
 };
 use storage::{read_state_or_recover, state_path, with_state_update};
 
-const AGENT_CENTER_CLASS: &str = "io.github.bengous.AgentNotifier";
-const WAYBAR_SIGNAL: &str = "RTMIN+11";
 const UNAVAILABLE_WAYBAR_JSON: &str =
     r#"{"text":"agents !","tooltip":"Agent notifier unavailable","class":"error"}"#;
 const UNAVAILABLE_WAYBAR_TOOLTIP: &str = "Agent notifier unavailable";
@@ -195,13 +192,6 @@ fn play_sound() {
     let _ = run_command(&["canberra-gtk-play", "-f", &file], DEFAULT_TIMEOUT);
 }
 
-fn refresh_waybar() {
-    let _ = run_command(
-        &["pkill", &format!("-{WAYBAR_SIGNAL}"), "waybar"],
-        Duration::from_millis(500),
-    );
-}
-
 fn fallback_cwd() -> String {
     env::var("PWD")
         .ok()
@@ -233,10 +223,8 @@ fn capture_completion_event(event: &AgentEvent, now: DateTime<Utc>) -> io::Resul
     let notify_event = event.clone();
     let sound = thread::spawn(play_sound);
     let notification = thread::spawn(move || notify(&notify_event));
-    let waybar = thread::spawn(refresh_waybar);
     let _ = sound.join();
     let _ = notification.join();
-    let _ = waybar.join();
     Ok(())
 }
 
@@ -303,31 +291,11 @@ fn handle_waybar() -> io::Result<()> {
     Ok(())
 }
 
-fn handle_center() -> io::Result<()> {
-    // Duplicate suppression belongs to Gtk.Application: a second launch re-activates
-    // the primary instance over D-Bus and center.js presents the existing window.
-    // A Rust-side preflight cannot see an unmapped Wayland surface and only raced,
-    // so Hyprland focus is a post-activation fallback only.
-
-    let center_path = share_dir().join("center.js");
-    let cli_command = env::current_exe()?.to_string_lossy().into_owned();
-    let _child = Command::new("gjs")
-        .arg(center_path)
-        .env("AGENT_NOTIFIER_CLI_COMMAND", cli_command)
-        .stdout(Stdio::null())
-        .spawn()?;
-    thread::sleep(Duration::from_millis(300));
-    let _ = hyprland::focus_center_window(AGENT_CENTER_CLASS);
-    Ok(())
-}
-
 fn handle_active_window_read() -> io::Result<()> {
     let Some(address) = hyprland::active_window_address() else {
         return Ok(());
     };
-    if mark_address_read(&address, Utc::now())? {
-        refresh_waybar();
-    }
+    mark_address_read(&address, Utc::now())?;
     Ok(())
 }
 
@@ -360,10 +328,8 @@ fn handle_watch_active_window() -> io::Result<()> {
                     let Some(address) = parse_active_window_address(&line) else {
                         continue;
                     };
-                    match mark_address_read(&address, Utc::now()) {
-                        Ok(true) => refresh_waybar(),
-                        Ok(false) => {}
-                        Err(error) => eprintln!("agent-notifier: state update failed: {error}"),
+                    if let Err(error) = mark_address_read(&address, Utc::now()) {
+                        eprintln!("agent-notifier: state update failed: {error}");
                     }
                 }
             }
@@ -401,7 +367,6 @@ Commands:
   pi-hook                  Capture a Pi completion from stdin
   claude-hook              Capture a Claude Code completion from stdin
   waybar                   Print Waybar module JSON
-  center                   Open the notification center
   list-json                Print raw state as JSON
   list-display-json        Print focusable events as display JSON
   focus-latest             Focus the latest unread event
@@ -432,7 +397,6 @@ fn run() -> io::Result<i32> {
         CliCommand::PiHook => handle_pi_hook().map(|()| 0),
         CliCommand::ClaudeHook => handle_hook("claude").map(|()| 0),
         CliCommand::Waybar => handle_waybar().map(|()| 0),
-        CliCommand::Center => handle_center().map(|()| 0),
         CliCommand::ListJson => {
             print_json(&read_state_or_recover(&state_path()?, Utc::now())?);
             Ok(0)
@@ -456,7 +420,6 @@ fn run() -> io::Result<i32> {
                     let _ = with_state_update(&state_path()?, Utc::now(), |state| {
                         set_event_status(state, &id, EventStatus::Read)
                     })?;
-                    refresh_waybar();
                 }
             }
             Ok(0)
@@ -471,14 +434,12 @@ fn run() -> io::Result<i32> {
             let _ = with_state_update(&state_path()?, Utc::now(), |state| {
                 set_event_status(state, &id, EventStatus::Read)
             })?;
-            refresh_waybar();
             Ok(0)
         }
         CliCommand::MarkRead(id) => {
             let _ = with_state_update(&state_path()?, Utc::now(), |state| {
                 set_event_status(state, &id, EventStatus::Read)
             })?;
-            refresh_waybar();
             Ok(0)
         }
         CliCommand::FocusIdMissing => {
@@ -493,12 +454,10 @@ fn run() -> io::Result<i32> {
         CliCommand::WatchActiveWindow => handle_watch_active_window().map(|()| 0),
         CliCommand::ClearRead => {
             let _ = with_state_update(&state_path()?, Utc::now(), clear_read_events)?;
-            refresh_waybar();
             Ok(0)
         }
         CliCommand::ClearAll => {
             let _ = with_state_update(&state_path()?, Utc::now(), |_| empty_state())?;
-            refresh_waybar();
             Ok(0)
         }
         CliCommand::PruneStale => {
@@ -506,7 +465,6 @@ fn run() -> io::Result<i32> {
             let _ = with_state_update(&state_path()?, Utc::now(), |state| {
                 prune_stale_events(state, &active_addresses)
             })?;
-            refresh_waybar();
             Ok(0)
         }
         CliCommand::Unknown => {
@@ -681,7 +639,7 @@ mod tests {
     }
 
     #[test]
-    fn display_state_exposes_exactly_the_keys_the_center_reads() {
+    fn display_state_exposes_exactly_the_keys_the_widget_reads() {
         let state = display_state_from_events(1, vec![event_with_address("e", 300, "0xbeef")]);
         let value = serde_json::to_value(&state).unwrap_or(serde_json::Value::Null);
         let event = &value["events"][0];

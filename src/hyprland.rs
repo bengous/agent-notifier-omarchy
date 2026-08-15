@@ -6,7 +6,7 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-use crate::process::{command_output, run_command, DEFAULT_TIMEOUT};
+use crate::process::command_output;
 use crate::state::{AgentEvent, WorkspaceInfo};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -94,20 +94,6 @@ pub(crate) fn focus_event_source(event: Option<&AgentEvent>) -> bool {
 
 fn dispatch_succeeded(response: Option<&str>) -> bool {
     response == Some("ok")
-}
-
-pub(crate) fn focus_center_window(class_name: &str) -> bool {
-    run_command(
-        &[
-            "hyprctl",
-            "dispatch",
-            "focuswindow",
-            &format!("class:{class_name}"),
-        ],
-        DEFAULT_TIMEOUT,
-    )
-    .unwrap_or(1)
-        == 0
 }
 
 fn read_clients() -> Vec<HyprClient> {
