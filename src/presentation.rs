@@ -20,7 +20,7 @@ pub(crate) struct DisplayState {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub(crate) struct WaybarOutput {
+pub(crate) struct StatusOutput {
     pub(crate) text: String,
     pub(crate) tooltip: String,
     pub(crate) class: String,
@@ -90,13 +90,13 @@ pub(crate) fn format_agent_button(unread_count: usize) -> String {
     format!("agents 󰂚 {unread_count}")
 }
 
-pub(crate) fn waybar_output(events: &[AgentEvent]) -> WaybarOutput {
+pub(crate) fn status_output(events: &[AgentEvent]) -> StatusOutput {
     let unread = events
         .iter()
         .filter(|event| event.status == EventStatus::Unread)
         .cloned()
         .collect::<Vec<_>>();
-    WaybarOutput {
+    StatusOutput {
         text: format_agent_button(unread.len()),
         tooltip: format_tooltip(&unread),
         class: if unread.is_empty() {

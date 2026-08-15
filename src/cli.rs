@@ -5,7 +5,7 @@ pub(crate) enum CliCommand {
     Hook,
     PiHook,
     ClaudeHook,
-    Waybar,
+    StatusJson,
     ListJson,
     ListDisplayJson,
     FocusLatest,
@@ -37,7 +37,7 @@ impl CliCommand {
             Some("hook") => Self::Hook,
             Some("pi-hook") => Self::PiHook,
             Some("claude-hook") => Self::ClaudeHook,
-            Some("waybar") => Self::Waybar,
+            Some("status-json") => Self::StatusJson,
             Some("list-json") => Self::ListJson,
             Some("list-display-json") => Self::ListDisplayJson,
             Some("focus-latest") => Self::FocusLatest,
@@ -70,7 +70,7 @@ mod tests {
         assert_eq!(parse(&["hook"]), CliCommand::Hook);
         assert_eq!(parse(&["pi-hook"]), CliCommand::PiHook);
         assert_eq!(parse(&["claude-hook"]), CliCommand::ClaudeHook);
-        assert_eq!(parse(&["waybar"]), CliCommand::Waybar);
+        assert_eq!(parse(&["status-json"]), CliCommand::StatusJson);
         assert_eq!(parse(&["clear-all"]), CliCommand::ClearAll);
         assert_eq!(parse(&["prune-stale"]), CliCommand::PruneStale);
     }
@@ -96,7 +96,7 @@ mod tests {
 
     #[test]
     fn rejects_extra_arguments() {
-        assert_eq!(parse(&["waybar", "extra"]), CliCommand::Unknown);
+        assert_eq!(parse(&["status-json", "extra"]), CliCommand::Unknown);
         assert_eq!(
             parse(&["focus-id", "event-1", "extra"]),
             CliCommand::Unknown

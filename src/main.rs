@@ -22,7 +22,7 @@ use codex_event::{
     build_stop_event, current_git_branch, parse_codex_stop_input, project_root, random_hex,
 };
 use pi_event::{build_pi_event, parse_pi_hook_input};
-use presentation::{display_state_from_events, event_label, waybar_output, WaybarOutput};
+use presentation::{display_state_from_events, event_label, status_output, StatusOutput};
 use process::{run_command, run_command_owned, DEFAULT_TIMEOUT};
 use state::{
     append_and_trim, clear_read_events, dedupe_events, empty_state, set_event_status,
@@ -31,10 +31,10 @@ use state::{
 };
 use storage::{read_state_or_recover, state_path, with_state_update};
 
-const UNAVAILABLE_WAYBAR_JSON: &str =
+const UNAVAILABLE_STATUS_JSON: &str =
     r#"{"text":"agents !","tooltip":"Agent notifier unavailable","class":"error"}"#;
-const UNAVAILABLE_WAYBAR_TOOLTIP: &str = "Agent notifier unavailable";
-const WAYBAR_ERROR_CLASS: &str = "error";
+const UNAVAILABLE_STATUS_TOOLTIP: &str = "Agent notifier unavailable";
+const STATUS_ERROR_CLASS: &str = "error";
 
 fn set_active_window_read(state: AgentNotifierState) -> AgentNotifierState {
     match hyprland::active_window_address() {
@@ -103,8 +103,8 @@ fn read_state_with_active_window_read(now: DateTime<Utc>) -> io::Result<AgentNot
     with_state_update(&path, now, set_active_window_read)
 }
 
-fn format_waybar(state: &AgentNotifierState) -> WaybarOutput {
-    waybar_output(&focusable_events(&state.events))
+fn format_status(state: &AgentNotifierState) -> StatusOutput {
+    status_output(&focusable_events(&state.events))
 }
 
 fn prefix_share_dir() -> PathBuf {
@@ -283,10 +283,10 @@ fn handle_pi_hook() -> io::Result<()> {
     capture_completion_event(&event, now)
 }
 
-fn handle_waybar() -> io::Result<()> {
+fn handle_status_json() -> io::Result<()> {
     let state = read_state_with_active_window_read(Utc::now())?;
-    let output = std::panic::catch_unwind(|| format_waybar(&state))
-        .unwrap_or_else(|_| unavailable_waybar_output());
+    let output = std::panic::catch_unwind(|| format_status(&state))
+        .unwrap_or_else(|_| unavailable_status_output());
     print_json(&output);
     Ok(())
 }
@@ -346,16 +346,16 @@ fn print_json<T: Serialize>(value: &T) {
     match serde_json::to_string(value) {
         Ok(json) => println!("{json}"),
         Err(_) => {
-            println!("{UNAVAILABLE_WAYBAR_JSON}");
+            println!("{UNAVAILABLE_STATUS_JSON}");
         }
     }
 }
 
-fn unavailable_waybar_output() -> WaybarOutput {
-    WaybarOutput {
+fn unavailable_status_output() -> StatusOutput {
+    StatusOutput {
         text: "agents !".to_owned(),
-        tooltip: UNAVAILABLE_WAYBAR_TOOLTIP.to_owned(),
-        class: WAYBAR_ERROR_CLASS.to_owned(),
+        tooltip: UNAVAILABLE_STATUS_TOOLTIP.to_owned(),
+        class: STATUS_ERROR_CLASS.to_owned(),
     }
 }
 
@@ -366,7 +366,7 @@ Commands:
   hook                     Capture a Codex completion from stdin
   pi-hook                  Capture a Pi completion from stdin
   claude-hook              Capture a Claude Code completion from stdin
-  waybar                   Print Waybar module JSON
+  status-json              Print bar-widget status JSON
   list-json                Print raw state as JSON
   list-display-json        Print focusable events as display JSON
   focus-latest             Focus the latest unread event
@@ -396,7 +396,7 @@ fn run() -> io::Result<i32> {
         CliCommand::Hook => handle_hook("codex").map(|()| 0),
         CliCommand::PiHook => handle_pi_hook().map(|()| 0),
         CliCommand::ClaudeHook => handle_hook("claude").map(|()| 0),
-        CliCommand::Waybar => handle_waybar().map(|()| 0),
+        CliCommand::StatusJson => handle_status_json().map(|()| 0),
         CliCommand::ListJson => {
             print_json(&read_state_or_recover(&state_path()?, Utc::now())?);
             Ok(0)
@@ -485,7 +485,7 @@ fn run() -> io::Result<i32> {
 /// <https://code.claude.com/docs/en/hooks>.
 fn hook_failure_exit_code(command: &CliCommand) -> i32 {
     match command {
-        CliCommand::Hook | CliCommand::PiHook | CliCommand::Waybar => 0,
+        CliCommand::Hook | CliCommand::PiHook | CliCommand::StatusJson => 0,
         _ => 1,
     }
 }
@@ -496,8 +496,8 @@ fn main() {
         Ok(code) => std::process::exit(code),
         Err(error) => {
             eprintln!("agent-notifier: {error}");
-            if command == CliCommand::Waybar {
-                println!("{UNAVAILABLE_WAYBAR_JSON}");
+            if command == CliCommand::StatusJson {
+                println!("{UNAVAILABLE_STATUS_JSON}");
             }
             std::process::exit(hook_failure_exit_code(&command));
         }
@@ -886,8 +886,8 @@ mod tests {
     }
 
     #[test]
-    fn unavailable_waybar_output_is_visible() {
-        let output = unavailable_waybar_output();
+    fn unavailable_status_output_is_visible() {
+        let output = unavailable_status_output();
         assert_eq!(output.text, "agents !");
         assert_eq!(output.class, "error");
     }
@@ -898,7 +898,7 @@ mod tests {
             CliCommand::Hook,
             CliCommand::PiHook,
             CliCommand::ClaudeHook,
-            CliCommand::Waybar,
+            CliCommand::StatusJson,
         ] {
             assert_ne!(hook_failure_exit_code(&command), 2);
         }
@@ -907,13 +907,13 @@ mod tests {
     #[test]
     fn hook_failure_exit_codes_follow_verified_harness_policy() {
         assert_eq!(hook_failure_exit_code(&CliCommand::ClaudeHook), 1);
-        for command in [CliCommand::Hook, CliCommand::PiHook, CliCommand::Waybar] {
+        for command in [CliCommand::Hook, CliCommand::PiHook, CliCommand::StatusJson] {
             assert_eq!(hook_failure_exit_code(&command), 0);
         }
     }
 
     #[test]
-    fn counts_unread_events_in_waybar_label() {
+    fn counts_unread_events_in_status_label() {
         let event = event_with_pid("event-1", 1);
         let other = event_with_pid("event-2", 2);
         let read = AgentEvent {
@@ -925,7 +925,7 @@ mod tests {
             version: 1,
             events: vec![event.clone(), read, other],
         };
-        let output = waybar_output(&dedupe_events(state.events));
+        let output = status_output(&dedupe_events(state.events));
         assert_eq!(output.text, "agents 󰂚 2");
         assert_eq!(output.class, "unread");
     }
@@ -945,7 +945,7 @@ mod tests {
             .events
             .iter()
             .all(|event| event.status == EventStatus::Read));
-        assert_eq!(waybar_output(&dedupe_events(state.events)).text, "agents");
+        assert_eq!(status_output(&dedupe_events(state.events)).text, "agents");
     }
 
     #[test]
@@ -960,7 +960,7 @@ mod tests {
         let state = set_window_address_read(state, "0xfocused");
 
         assert_eq!(
-            waybar_output(&dedupe_events(state.events)).text,
+            status_output(&dedupe_events(state.events)).text,
             "agents 󰂚 1"
         );
     }
@@ -981,7 +981,7 @@ mod tests {
     }
 
     #[test]
-    fn emits_waybar_json_shape() -> Result<(), Box<dyn std::error::Error>> {
+    fn emits_status_json_shape() -> Result<(), Box<dyn std::error::Error>> {
         let state = AgentNotifierState {
             version: 1,
             events: vec![AgentEvent {
@@ -993,7 +993,7 @@ mod tests {
                 ..base_event()
             }],
         };
-        let output = waybar_output(&dedupe_events(state.events));
+        let output = status_output(&dedupe_events(state.events));
         assert_eq!(output.text, "agents 󰂚 1");
         assert_eq!(output.tooltip, "line\nbreak May 6, 2026 10:00 AM UTC");
         assert_eq!(output.class, "unread");
@@ -1004,10 +1004,10 @@ mod tests {
     fn ignores_read_events() {
         let mut event = base_event();
         event.status = EventStatus::Read;
-        let output = waybar_output(&dedupe_events(vec![event]));
+        let output = status_output(&dedupe_events(vec![event]));
         assert_eq!(
             output,
-            WaybarOutput {
+            StatusOutput {
                 text: "agents".to_owned(),
                 tooltip: "No agent completions".to_owned(),
                 class: "empty".to_owned(),
@@ -1073,7 +1073,7 @@ mod tests {
         let focusable = focusable_events_for_addresses(&events, &HashSet::new());
 
         assert!(focusable.is_empty());
-        assert_eq!(waybar_output(&focusable).text, "agents");
+        assert_eq!(status_output(&focusable).text, "agents");
     }
 
     #[test]
@@ -1095,7 +1095,7 @@ mod tests {
             focusable.first().map(|event| event.id.as_str()),
             Some("live-window")
         );
-        assert_eq!(waybar_output(&focusable).text, "agents 󰂚 1");
+        assert_eq!(status_output(&focusable).text, "agents 󰂚 1");
     }
 
     #[test]
