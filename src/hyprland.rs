@@ -86,10 +86,8 @@ pub(crate) fn focus_event_source(event: Option<&AgentEvent>) -> bool {
     else {
         return false;
     };
-    let target = format!("address:{address}");
-    dispatch_succeeded(
-        command_output(["hyprctl", "dispatch", "focuswindow", target.as_str()]).as_deref(),
-    )
+    let target = format!("hl.dsp.focus({{ window = \"address:{address}\" }})");
+    dispatch_succeeded(command_output(["hyprctl", "dispatch", target.as_str()]).as_deref())
 }
 
 fn dispatch_succeeded(response: Option<&str>) -> bool {

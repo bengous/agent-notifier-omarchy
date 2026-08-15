@@ -44,9 +44,21 @@ BarWidget {
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
-  function agentTag(agent) {
+  readonly property var brandColors: ({ claude: "#d97757", codex: "#10a37f", pi: "#a78bfa" })
+
+  function brandColor(agent) {
+    var color = brandColors[String(agent || "").trim()]
+    return color ? color : Color.accent
+  }
+
+  // Same convention as omarchy.agents: assets/<agent>.svg, with a -light twin
+  // picked on light surfaces for marks that only ship in white.
+  function agentIcon(agent) {
     var name = String(agent || "").trim()
-    return name === "" ? "" : "● " + name
+    if (name === "claude") return Qt.resolvedUrl("assets/claude.svg")
+    if (name === "codex")
+      return Qt.resolvedUrl(Color.background.hslLightness >= 0.5 ? "assets/codex-light.svg" : "assets/codex.svg")
+    return ""
   }
 
   function refresh() {
@@ -281,21 +293,51 @@ BarWidget {
               width: parent.width
               spacing: Style.space(6)
 
-              Text {
-                id: agentTag
-                text: root.agentTag(eventRow.modelData.agent)
-                color: eventRow.unread ? Color.accent : root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+              Row {
+                id: agentMark
+                spacing: Style.space(4)
+                anchors.verticalCenter: parent.verticalCenter
+                opacity: eventRow.unread ? 1 : 0.6
+
+                readonly property string icon: root.agentIcon(eventRow.modelData.agent)
+
+                Image {
+                  visible: agentMark.icon !== ""
+                  source: agentMark.icon
+                  width: Style.font.body
+                  height: Style.font.body
+                  sourceSize.width: width
+                  sourceSize.height: height
+                  fillMode: Image.PreserveAspectFit
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Rectangle {
+                  visible: agentMark.icon === ""
+                  width: Style.space(6)
+                  height: Style.space(6)
+                  radius: height / 2
+                  color: root.brandColor(eventRow.modelData.agent)
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                  text: String(eventRow.modelData.agent || "").trim()
+                  color: root.brandColor(eventRow.modelData.agent)
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  anchors.verticalCenter: parent.verticalCenter
+                }
               }
 
               Text {
-                width: metaRow.width - agentTag.width - metaRow.spacing
+                width: metaRow.width - agentMark.width - metaRow.spacing
                 text: String(eventRow.modelData.displayCreatedAt || "")
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
                 elide: Text.ElideRight
+                anchors.verticalCenter: parent.verticalCenter
               }
             }
           }
