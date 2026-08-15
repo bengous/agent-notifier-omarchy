@@ -1,0 +1,36 @@
+[package]
+name = "agent-notifier"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+description = "Desktop notifications and a GTK completion center for coding agents on Hyprland"
+license = "MIT"
+repository = "https://github.com/bengous/agent-notifier"
+readme = "README.md"
+keywords = ["hyprland", "waybar", "notifications", "agents"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+
+[lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+missing_debug_implementations = "deny"
+
+[lints.clippy]
+all = "deny"
+pedantic = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
