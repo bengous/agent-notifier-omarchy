@@ -15,7 +15,6 @@ cargo build --release --locked
 # Data first, binary last: a half-finished install must never leave a newer binary
 # looking for data that is not there yet.
 install -d "$DESTDIR$SHAREDIR" "$DESTDIR$BINDIR"
-install -m 644 data/center.js "$DESTDIR$SHAREDIR/center.js"
 install -m 644 data/agent-complete.mp3 "$DESTDIR$SHAREDIR/agent-complete.mp3"
 
 binary_tmp="$(mktemp "$DESTDIR$BINDIR/.${BIN_NAME}.tmp.XXXXXX")"

@@ -3,11 +3,11 @@ name = "agent-notifier"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.89"
-description = "Desktop notifications and a GTK completion center for coding agents on Hyprland"
+description = "Desktop notifications and an Omarchy bar widget backend for coding agent completions"
 license = "MIT"
-repository = "https://github.com/bengous/agent-notifier"
+repository = "https://github.com/bengous/agent-notifier-omarchy"
 readme = "README.md"
-keywords = ["hyprland", "waybar", "notifications", "agents"]
+keywords = ["hyprland", "omarchy", "notifications", "agents"]
 categories = ["command-line-utilities"]
 
 [dependencies]

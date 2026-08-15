@@ -1,57 +1,77 @@
-# Agent Notifier
+# Agent Notifier for Omarchy
 
-`agent-notifier` captures Codex, Claude Code, and Pi completion events, alerts
-the desktop, exposes unread sessions to Waybar, and opens a GTK completion
-center that can focus the source window.
+An agent completion center for the Omarchy bar.
 
-**Linux + Hyprland only**
+`agent-notifier` turns Codex, Claude Code, and Pi completion hooks into desktop
+alerts and into a bar widget that lists the sessions still waiting for you. Each
+entry focuses its source window, so a finished agent is one click away.
 
-## Dependencies
-
-| Dependency | Requirement | Behaviour when missing |
-|---|---|---|
-| Linux, Hyprland, `hyprctl` | Required | Use outside Hyprland is unsupported; hooks alert without storing when no source client resolves, focus/read/display commands remain fail-soft, Waybar remains safe, and `prune-stale` aborts without changing state |
-| gjs + GTK 4 | Required for `center` only | `center` fails with a clear message; every other command works |
-| Waybar | Optional | The JSON output and the `RTMIN+11` refresh signal are simply unused |
-| `notify-send` | Optional | No desktop pop-up; the event is still captured |
-| `mpv`, `canberra-gtk-play` | Optional | No sound; both are tried in that order |
-| `git` | Optional | Branch metadata is omitted; the cwd is used as the project path |
-| Rust ≥ 1.89, Bash | Build only | — |
+**Linux + Omarchy (Hyprland) only.**
 
 ## Install
 
-From the crate root:
+Two steps: the binary, then the plugin.
+
+### 1. The binary
+
+```sh
+cargo install --path .
+```
+
+`cargo install` puts `agent-notifier` in `~/.cargo/bin`. The completion sound is
+not installed this way; set `AGENT_NOTIFIER_SOUND_FILE` to
+`data/agent-complete.mp3`, or use the installer instead:
 
 ```sh
 ./install.sh
 ```
 
-The installer accepts `PREFIX`, `DESTDIR`, `BINDIR`, and `BIN_NAME`. It defaults
-to `/usr/local/bin/agent-notifier` and
-`/usr/local/share/agent-notifier`.
+`install.sh` builds the release binary and installs it atomically after its
+runtime data. It defaults to `/usr/local/bin/agent-notifier` and
+`/usr/local/share/agent-notifier`, and accepts `PREFIX`, `DESTDIR`, `BINDIR`,
+and `BIN_NAME`.
+
+The bar widget calls `agent-notifier` through `PATH`, so the binary directory
+must be on the `PATH` of your Omarchy session.
+
+### 2. The plugin
+
+```sh
+omarchy plugin add https://github.com/bengous/agent-notifier-omarchy.git --enable
+```
+
+Omarchy clones this repository as-is into
+`~/.config/omarchy/plugins/io.github.bengous.agent-notifier/` and reads
+`manifest.json` at its root. The clone carries the Rust sources with it; they
+are inert. The widget never runs code from the clone — it calls the binary you
+installed in step 1.
+
+## Plugin files
+
+<!-- placeholder: the QML widget files and the manifest are documented here. -->
 
 ## Hook wiring
 
+Every hook reads its payload on stdin and exits fast. A hook failure never
+blocks an agent turn.
+
 ### Codex
 
-The managed source is
-`dot_codex/private_config.toml.tmpl`:
+In `~/.codex/config.toml`:
 
 ```toml
 [[hooks.Stop]]
 
 [[hooks.Stop.hooks]]
-command = "/home/you/.local/bin/agent-notifier hook"
+command = "agent-notifier hook"
 statusMessage = "Recording Codex completion"
 timeout = 5
 type = "command"
 ```
 
-Replace `/home/you` with the user's home directory.
-
 ### Claude Code
 
-Merge this entry from `dot_claude/settings.json` into `hooks`:
+In `~/.claude/settings.json`, merge this into `hooks`:
 
 ```json
 {
@@ -60,7 +80,7 @@ Merge this entry from `dot_claude/settings.json` into `hooks`:
       "hooks": [
         {
           "type": "command",
-          "command": "~/.local/bin/agent-notifier claude-hook",
+          "command": "agent-notifier claude-hook",
           "timeout": 5
         }
       ]
@@ -69,11 +89,12 @@ Merge this entry from `dot_claude/settings.json` into `hooks`:
 }
 ```
 
+`Stop` only, not `SubagentStop`: subagents do not raise notifications.
+
 ### Pi
 
-Pi uses the managed extension at
-`dot_pi/agent/extensions/agent-notifier.ts`. It listens only to main-agent
-`agent_end` events:
+In `~/.pi/agent/extensions/agent-notifier.ts`, listen to main-agent `agent_end`
+and pipe the payload into `agent-notifier pi-hook`:
 
 ```ts
 export default function (pi: ExtensionAPI) {
@@ -88,64 +109,64 @@ export default function (pi: ExtensionAPI) {
 }
 ```
 
-`notifyAgentCompletion` sends the payload to
-`~/.local/bin/agent-notifier pi-hook`, with a five-second timeout. Chezmoi
-deploys the complete extension to
-`~/.pi/agent/extensions/agent-notifier.ts`.
+### Active window listener
 
-## Waybar
+Focusing a window by hand acknowledges its completion. Start the listener from
+`~/.config/hypr/autostart.conf`:
 
-The current `dot_config/waybar/config.jsonc` module is:
-
-```jsonc
-"custom/agent-notifier": {
-  // Persistent launcher for the agent completion center. The pop-up desktop
-  // notification remains separate; this button only opens/refocuses the list.
-  "format": "{}",
-  "exec": "$HOME/.local/bin/agent-notifier waybar",
-  "return-type": "json",
-  "interval": 30,
-  "signal": 11,
-  "on-click": "$HOME/.local/bin/agent-notifier center"
-},
+```conf
+exec-once = /usr/local/bin/agent-notifier watch-active-window
 ```
 
-Add `"custom/agent-notifier"` to the desired Waybar module list. Signal 11
-matches the notifier's `RTMIN+11` refresh.
+Use the full path here: the Hyprland startup environment does not always carry
+your shell `PATH`.
 
-## State file
+## Commands
 
-State is stored at:
+| Command | Purpose |
+|---|---|
+| `hook`, `claude-hook`, `pi-hook` | Capture a completion from stdin |
+| `status-json` | Print `{"text","tooltip","class"}` for the bar widget; `class` is `empty` or `unread` |
+| `list-display-json` | Print the focusable events the widget renders |
+| `list-json` | Print raw state |
+| `focus-latest` | Focus the latest unread event |
+| `focus-id <event-id>` | Focus one event and mark it read |
+| `mark-read <event-id>` | Mark one event read |
+| `active-window-read` | Mark the active window's events read, once |
+| `watch-active-window` | Same, as a long-running listener |
+| `clear-read`, `clear-all` | Remove read events, or all of them |
+| `prune-stale` | Remove events whose source window is gone |
+
+`--help` prints this list. `--version` prints the package version. Unknown
+commands and extra arguments exit 2.
+
+An event is visible only while its source window still exists. Completions from
+the already-focused window are dropped: you are looking at them.
+
+## State
 
 ```text
 $XDG_STATE_HOME/agent-notifier/events.json
 ```
 
-When `XDG_STATE_HOME` is empty or unset, the fallback is:
+The fallback is `$HOME/.local/state/agent-notifier/events.json`. Writes are
+atomic and hold an advisory lock. Invalid state is renamed to
+`events.json.corrupt-<timestamp>` and treated as empty. At most 50 events are
+kept.
 
-```text
-$HOME/.local/state/agent-notifier/events.json
-```
+`events.json` is an internal format. Read the state through `status-json` and
+`list-display-json` instead.
 
-The notifier fails instead of writing to the current directory when neither
-location is available.
+## Dependencies
 
-## Failure policy
+| Dependency | Requirement | Behaviour when missing |
+|---|---|---|
+| Omarchy, Hyprland, `hyprctl` | Required | Shipped with Omarchy; use elsewhere is unsupported |
+| `notify-send` | Optional | No desktop pop-up; the event is still captured |
+| `mpv`, `canberra-gtk-play` | Optional | No sound; both are tried in that order |
+| `git` | Optional | No branch name; the cwd becomes the project path |
+| Rust >= 1.89, Bash | Build only | - |
 
-| Command | Failure behaviour |
-|---|---|
-| `hook`, `pi-hook` | Print the error and exit 0 so the agent harness continues |
-| `claude-hook` | Print the error and exit 1; Claude Code treats exit 1 as non-blocking |
-| `waybar` | Print `{"text":"agents !","tooltip":"Agent notifier unavailable","class":"error"}` and exit 0 |
-| `center` | Print launch failures and exit 1; errors from the spawned GJS process remain visible on stderr |
-| `list-json` | Print state-path/read failures and exit 1 |
-| `list-display-json` | Print state failures and exit 1; missing Hyprland client data produces an empty focusable list |
-| `focus-latest` | Treat no focusable event or a failed focus as a successful no-op; state failures exit 1 |
-| `focus-id <event-id>` | Print a focus failure and exit 1; a missing id exits 2 |
-| `mark-read <event-id>` | State failures exit 1; a missing id exits 2 |
-| `active-window-read` | Treat unavailable active-window data as a successful no-op; state failures exit 1 |
-| `watch-active-window` | Exit 1 when no Hyprland event socket can be resolved; reconnect indefinitely after runtime disconnects |
-| `clear-read`, `clear-all` | State failures exit 1 |
-| `prune-stale` | Exit 1 without changing state when `hyprctl clients -j` fails or returns invalid JSON; a successful empty list prunes every event |
-| `--help`, `--version` | Print output and exit 0 |
-| Unknown commands, extra arguments | Print help and exit 2 |
+## Licence
+
+MIT. See `LICENSE` and `ASSETS.md`.
