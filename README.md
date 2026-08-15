@@ -134,10 +134,10 @@ export default function (pi: ExtensionAPI) {
 ### Active window listener
 
 Focusing a window by hand acknowledges its completion. Start the listener from
-`~/.config/hypr/autostart.conf`:
+`~/.config/hypr/autostart.lua`:
 
-```conf
-exec-once = /usr/local/bin/agent-notifier watch-active-window
+```lua
+o.exec_on_start("/usr/local/bin/agent-notifier watch-active-window")
 ```
 
 Use the full path here: the Hyprland startup environment does not always carry
