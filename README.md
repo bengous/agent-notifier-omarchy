@@ -31,6 +31,11 @@ runtime data. It defaults to `/usr/local/bin/agent-notifier` and
 `/usr/local/share/agent-notifier`, and accepts `PREFIX`, `DESTDIR`, `BINDIR`,
 and `BIN_NAME`.
 
+No Rust toolchain? Every
+[release](https://github.com/bengous/agent-notifier-omarchy/releases) carries an
+`x86_64` and an `aarch64` Linux archive, each with a `.sha256` checksum file.
+Unpack the archive for your machine and put `agent-notifier` on your `PATH`.
+
 The bar widget calls `agent-notifier` through `PATH`, so the binary directory
 must be on the `PATH` of your Omarchy session.
 
