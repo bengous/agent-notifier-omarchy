@@ -116,6 +116,14 @@ BarWidget {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
+  IpcHandler {
+    target: "io.github.bengous.agent-notifier"
+
+    function open(): void { root.popupOpen = true }
+    function close(): void { root.close() }
+    function toggle(): void { root.popupOpen = !root.popupOpen }
+  }
+
   FileView {
     path: root.stateDir + "/events.json"
     watchChanges: true
