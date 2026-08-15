@@ -51,6 +51,16 @@ Omarchy clones this repository as-is into
 are inert. The widget never runs code from the clone — it calls the binary you
 installed in step 1.
 
+## Remove
+
+```sh
+omarchy plugin remove io.github.bengous.agent-notifier
+```
+
+Then drop the binary (`~/.cargo/bin/agent-notifier`, or `/usr/local/bin/agent-notifier`
+and `/usr/local/share/agent-notifier` after `install.sh`), the state directory
+`$XDG_STATE_HOME/agent-notifier`, and the hook entries you added below.
+
 ## Plugin files
 
 - `manifest.json` — plugin manifest (`kinds: ["bar-widget"]`, id `io.github.bengous.agent-notifier`).
