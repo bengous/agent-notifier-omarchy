@@ -48,7 +48,14 @@ installed in step 1.
 
 ## Plugin files
 
-<!-- placeholder: the QML widget files and the manifest are documented here. -->
+- `manifest.json` — plugin manifest (`kinds: ["bar-widget"]`, id `io.github.bengous.agent-notifier`).
+- `BarWidget.qml` — the whole widget: bar icon with an unread badge, and a popup
+  listing completions. It watches the state file and reads through
+  `agent-notifier list-display-json`; clicking a row runs `focus-id` then `mark-read`.
+
+Prefer a plain bar module over the plugin? `agent-notifier status-json` emits
+`{"text","tooltip","class"}` for a `"type": "command"` entry in your
+`~/.config/omarchy/shell.json` bar layout.
 
 ## Hook wiring
 
