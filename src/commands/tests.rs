@@ -9,7 +9,7 @@ use tempfile::tempdir;
 fn base_event() -> AgentEvent {
     build_stop_event(
         "codex",
-        &CodexStopInput {
+        &StopHookInput {
             cwd: Some("/repo/dotfiles".to_owned()),
             session_id: Some("session-1".to_owned()),
             session_id_camel: None,
@@ -136,8 +136,8 @@ fn parses_active_window_addresses_from_socket_lines() {
 }
 
 #[test]
-fn parses_codex_stop_json() {
-    let input = parse_codex_stop_input(r#"{"cwd":"/repo","session_id":"abc"}"#);
+fn parses_stop_hook_json() {
+    let input = parse_stop_hook_input(r#"{"cwd":"/repo","session_id":"abc"}"#);
     assert_eq!(input.cwd.as_deref(), Some("/repo"));
     assert_eq!(input.session_id.as_deref(), Some("abc"));
 }
@@ -290,7 +290,7 @@ fn parses_v1_state_without_a_project_key() -> Result<(), Box<dyn std::error::Err
 fn builds_claude_event_shape() -> Result<(), Box<dyn std::error::Error>> {
     let event = build_stop_event(
         "claude",
-        &CodexStopInput {
+        &StopHookInput {
             cwd: Some("/repo/dotfiles".to_owned()),
             session_id: Some("claude-session-1".to_owned()),
             session_id_camel: None,

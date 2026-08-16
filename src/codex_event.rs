@@ -12,7 +12,7 @@ use crate::process::command_output;
 use crate::state::{AgentEvent, EventStatus, WorkspaceInfo};
 
 #[derive(Debug, Clone, Deserialize, Default)]
-pub(crate) struct CodexStopInput {
+pub(crate) struct StopHookInput {
     pub(crate) cwd: Option<String>,
     #[serde(default)]
     pub(crate) session_id: Option<String>,
@@ -22,9 +22,9 @@ pub(crate) struct CodexStopInput {
     pub(crate) transcript_path: Option<String>,
 }
 
-pub(crate) fn parse_codex_stop_input(raw: &str) -> CodexStopInput {
+pub(crate) fn parse_stop_hook_input(raw: &str) -> StopHookInput {
     if raw.trim().is_empty() {
-        return CodexStopInput::default();
+        return StopHookInput::default();
     }
     serde_json::from_str(raw).unwrap_or_default()
 }
@@ -71,7 +71,7 @@ pub(crate) fn current_git_branch(cwd: &str) -> Option<String> {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn build_stop_event(
     agent: &str,
-    input: &CodexStopInput,
+    input: &StopHookInput,
     cwd: String,
     project_path: String,
     project_key: String,

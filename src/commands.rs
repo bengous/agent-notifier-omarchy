@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use crate::cli::CliCommand;
 use crate::codex_event::{
-    build_stop_event, current_git_branch, parse_codex_stop_input, project_root, random_hex,
-    repository_key, CodexStopInput,
+    build_stop_event, current_git_branch, parse_stop_hook_input, project_root, random_hex,
+    repository_key, StopHookInput,
 };
 use crate::pi_event::{build_pi_event, parse_pi_hook_input};
 use crate::presentation::{display_state_from_events, event_label, status_output, StatusOutput};
@@ -237,7 +237,7 @@ fn hook_session_id(event: &AgentEvent) -> Option<&str> {
 
 fn resolve_session_title(
     agent: &str,
-    input: &CodexStopInput,
+    input: &StopHookInput,
     session_id: Option<&str>,
 ) -> Option<String> {
     if agent == "claude" {
@@ -250,7 +250,7 @@ fn resolve_session_title(
 fn handle_hook(agent: &str) -> io::Result<()> {
     let mut raw = String::new();
     io::stdin().read_to_string(&mut raw)?;
-    let input = parse_codex_stop_input(&raw);
+    let input = parse_stop_hook_input(&raw);
     let cwd = input.cwd.clone().unwrap_or_else(fallback_cwd);
     let now = Utc::now();
     let project_path = project_root(&cwd);
