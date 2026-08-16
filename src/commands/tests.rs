@@ -25,6 +25,8 @@ fn base_event() -> AgentEvent {
             monitor: "DP-3".to_owned(),
             client_pid: 300,
             client_address: None,
+            client_addresses: Vec::new(),
+            source_process: None,
             title: "dotfiles | main".to_owned(),
             extra: serde_json::Map::new(),
         }),
@@ -85,6 +87,18 @@ fn event_with_address(id: &str, pid: i64, address: &str) -> AgentEvent {
     let mut base = event_with_pid(id, pid);
     if let Some(workspace) = &mut base.workspace {
         workspace.client_address = Some(address.to_owned());
+    }
+    base
+}
+
+fn event_with_candidates(id: &str, pid: i64, addresses: &[&str]) -> AgentEvent {
+    let mut base = event_with_pid(id, pid);
+    if let Some(workspace) = &mut base.workspace {
+        workspace.client_address = addresses.first().map(|address| (*address).to_owned());
+        workspace.client_addresses = addresses
+            .iter()
+            .map(|address| (*address).to_owned())
+            .collect();
     }
     base
 }
@@ -375,6 +389,8 @@ fn appends_newest_first_and_trims() {
                         monitor: "DP-3".to_owned(),
                         client_pid: i64::from(index),
                         client_address: None,
+                        client_addresses: Vec::new(),
+                        source_process: None,
                         title: "dotfiles | main".to_owned(),
                         extra: serde_json::Map::new(),
                     })
@@ -769,6 +785,153 @@ fn includes_only_events_matching_live_hyprland_addresses() {
         Some("live-window")
     );
     assert_eq!(status_output(&focusable).text, "agents 󰂚 1");
+}
+
+fn event_with_source_process(id: &str, process: state::ProcessRef) -> AgentEvent {
+    let mut base = event_with_address(id, 4682, "0xguess");
+    if let Some(workspace) = &mut base.workspace {
+        workspace.source_process = Some(process);
+    }
+    base
+}
+
+fn own_process_ref() -> Result<state::ProcessRef, Box<dyn std::error::Error>> {
+    crate::hyprland::process_ref(i64::from(std::process::id()))
+        .ok_or_else(|| "no process ref for the test process".into())
+}
+
+#[test]
+fn an_event_with_a_live_source_process_stays_focusable_without_live_addresses(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let event = event_with_source_process("session-alive", own_process_ref()?);
+
+    let focusable = focusable_events_for_addresses(&[event], &HashSet::new());
+
+    assert_eq!(focusable.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn an_event_with_a_dead_source_process_is_pruned_despite_live_candidates(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let own = own_process_ref()?;
+    let dead = state::ProcessRef {
+        start_time: own.start_time.wrapping_add(1),
+        ..own
+    };
+    let state = state_of(vec![event_with_source_process("session-dead", dead)]);
+    let active = HashSet::from(["0xguess".to_owned()]);
+
+    assert!(prune_stale_events(state, &active).events.is_empty());
+    Ok(())
+}
+
+#[test]
+fn a_source_process_serializes_additively() -> Result<(), Box<dyn std::error::Error>> {
+    let legacy_json = serde_json::to_string(&event_with_address("legacy", 1, "0xbeef"))?;
+    assert!(!legacy_json.contains("sourceProcess"));
+
+    let process = state::ProcessRef {
+        pid: 146_082,
+        start_time: 737_679,
+    };
+    let value = serde_json::to_value(event_with_source_process("anchored", process))?;
+    assert_eq!(value["workspace"]["sourceProcess"]["pid"], 146_082);
+    assert_eq!(value["workspace"]["sourceProcess"]["startTime"], 737_679);
+
+    let raw = serde_json::to_string(&state_of(vec![event_with_source_process(
+        "anchored", process,
+    )]))?;
+    let parsed = parse_state(&raw)?;
+    assert_eq!(
+        parsed
+            .events
+            .first()
+            .and_then(|event| event.workspace.as_ref())
+            .and_then(|workspace| workspace.source_process),
+        Some(process)
+    );
+    Ok(())
+}
+
+#[test]
+fn an_event_with_any_live_candidate_stays_focusable() {
+    let event = event_with_candidates("guessed", 4682, &["0xguess", "0xother"]);
+    let active = HashSet::from(["0xother".to_owned()]);
+
+    assert_eq!(focusable_events_for_addresses(&[event], &active).len(), 1);
+}
+
+#[test]
+fn an_event_with_no_live_candidate_is_pruned() {
+    let state = state_of(vec![event_with_candidates(
+        "guessed",
+        4682,
+        &["0xguess", "0xother"],
+    )]);
+    let active = HashSet::from(["0xelse".to_owned()]);
+
+    assert!(prune_stale_events(state, &active).events.is_empty());
+}
+
+#[test]
+fn a_fallback_focus_does_not_acknowledge_the_event() -> Result<(), Box<dyn std::error::Error>> {
+    let shared = workspace(&event_with_candidates("shared", 1, &["0xguess", "0xother"]))?;
+
+    assert_eq!(shared.focus_outcome(Some("0xguess")), FocusOutcome::Primary);
+    assert_eq!(
+        shared.focus_outcome(Some("0xother")),
+        FocusOutcome::Fallback
+    );
+    assert_eq!(shared.focus_outcome(None), FocusOutcome::NotFocused);
+    Ok(())
+}
+
+#[test]
+fn the_source_is_certain_only_when_the_active_window_is_the_sole_candidate(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let sole = workspace(&event_with_candidates("sole", 1, &["0xonly"]))?;
+    let shared = workspace(&event_with_candidates("shared", 1, &["0xguess", "0xother"]))?;
+    let legacy = workspace(&event_with_address("legacy", 1, "0xlegacy"))?;
+
+    assert!(sole.is_sole_candidate("0xonly"));
+    assert!(!shared.is_sole_candidate("0xguess"));
+    assert!(!shared.is_sole_candidate("0xother"));
+    assert!(legacy.is_sole_candidate("0xlegacy"));
+    assert!(!legacy.is_sole_candidate("0xelse"));
+    Ok(())
+}
+
+#[test]
+fn candidate_addresses_serialize_additively() -> Result<(), Box<dyn std::error::Error>> {
+    let legacy_json = serde_json::to_string(&event_with_address("legacy", 1, "0xbeef"))?;
+    assert!(!legacy_json.contains("clientAddresses"));
+
+    let event = event_with_candidates("guessed", 4682, &["0xguess", "0xother"]);
+    let value = serde_json::to_value(&event)?;
+    assert_eq!(value["workspace"]["clientAddresses"][0], "0xguess");
+    assert_eq!(value["workspace"]["clientAddresses"][1], "0xother");
+    Ok(())
+}
+
+#[test]
+fn a_parsed_v1_workspace_without_the_candidate_list_falls_back_to_the_primary(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let raw = r#"{"version":1,"events":[{"id":"e","agent":"claude","kind":"main",
+        "projectName":"p","projectPath":"/repo/dotfiles","cwd":"/repo/dotfiles",
+        "sessionId":"s","createdAt":"2026-07-26T08:00:00.000Z",
+        "workspace":{"id":1,"name":"1","monitor":"DP-3","clientPid":42,
+            "clientAddress":"0xbeef","title":"t"},
+        "status":"unread"}]}"#;
+    let state = parse_state(raw)?;
+    let workspace = state
+        .events
+        .first()
+        .and_then(|event| event.workspace.clone())
+        .ok_or("missing workspace")?;
+
+    assert_eq!(workspace.candidate_addresses(), ["0xbeef"]);
+    Ok(())
 }
 
 #[test]

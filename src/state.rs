@@ -9,6 +9,15 @@ pub(crate) enum EventStatus {
     Read,
 }
 
+/// `start_time` (jiffies since boot, from `/proc/<pid>/stat`) makes the
+/// reference immune to pid recycling.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct ProcessRef {
+    pub(crate) pid: i64,
+    #[serde(rename = "startTime")]
+    pub(crate) start_time: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct WorkspaceInfo {
     pub(crate) id: i64,
@@ -22,6 +31,23 @@ pub(crate) struct WorkspaceInfo {
         skip_serializing_if = "Option::is_none"
     )]
     pub(crate) client_address: Option<String>,
+    /// Every window that can be the source, best guess first. A single-process
+    /// terminal gives all its windows one pid, so the true source window is not
+    /// knowable at capture time. Invariant: the first entry is `client_address`.
+    #[serde(
+        default,
+        rename = "clientAddresses",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub(crate) client_addresses: Vec<String>,
+    /// The window's own shell in the hook's process chain: the per-window
+    /// liveness anchor a shared-pid terminal cannot provide.
+    #[serde(
+        default,
+        rename = "sourceProcess",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) source_process: Option<ProcessRef>,
     pub(crate) title: String,
     /// Keeps keys written by a newer binary alive across a rewrite by this one.
     /// This only covers additive-key schema evolution: a new `EventStatus`
@@ -30,6 +56,42 @@ pub(crate) struct WorkspaceInfo {
     /// serde's flatten buffering does not carry them.
     #[serde(flatten)]
     pub(crate) extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl WorkspaceInfo {
+    /// Legacy states carry only the primary address.
+    pub(crate) fn candidate_addresses(&self) -> Vec<&str> {
+        if self.client_addresses.is_empty() {
+            self.client_address.as_deref().into_iter().collect()
+        } else {
+            self.client_addresses.iter().map(String::as_str).collect()
+        }
+    }
+
+    /// A certain source: the candidate set is exactly this one window.
+    pub(crate) fn is_sole_candidate(&self, address: &str) -> bool {
+        matches!(self.candidate_addresses().as_slice(), [only] if *only == address)
+    }
+
+    pub(crate) fn focus_outcome(&self, focused: Option<&str>) -> FocusOutcome {
+        match focused {
+            Some(address) if self.client_address.as_deref() == Some(address) => {
+                FocusOutcome::Primary
+            }
+            Some(_) => FocusOutcome::Fallback,
+            None => FocusOutcome::NotFocused,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FocusOutcome {
+    /// The primary window took focus: the completion is acknowledged.
+    Primary,
+    /// A sibling candidate took focus: the source window was not reached, so
+    /// the completion stays unread.
+    Fallback,
+    NotFocused,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

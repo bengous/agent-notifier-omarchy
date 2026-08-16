@@ -7,7 +7,7 @@ use std::io;
 use std::path::PathBuf;
 
 use crate::process::command_output;
-use crate::state::{AgentEvent, WorkspaceInfo};
+use crate::state::{AgentEvent, FocusOutcome, ProcessRef, WorkspaceInfo};
 
 #[derive(Debug, Clone, Deserialize)]
 struct HyprWorkspace {
@@ -65,31 +65,30 @@ pub(crate) fn resolve_current_workspace() -> Option<WorkspaceInfo> {
     resolve_workspace_from_pid_chain(current_parent_pid(), &clients)
 }
 
+/// Drop a completion only when the source is certain: the candidate set is
+/// exactly the active window. An uncertain set keeps the event, even when the
+/// best guess is active.
 pub(crate) fn is_active_source_event(event: &AgentEvent) -> bool {
-    let Some(source) = event
-        .workspace
-        .as_ref()
-        .and_then(|workspace| workspace.client_address.as_deref())
-    else {
+    let Some(workspace) = event.workspace.as_ref() else {
         return false;
     };
-    active_window_address().is_some_and(|active| active == source)
+    active_window_address().is_some_and(|active| workspace.is_sole_candidate(&active))
 }
 
-/// Focus the exact source window. Returns false when it cannot be focused.
+/// Focus the first candidate window that still exists.
 ///
-/// There is deliberately no PID or workspace fallback: the old workspace fallback
-/// could report success while focusing a different window, and callers now use
-/// this result to decide whether to acknowledge the event.
-pub(crate) fn focus_event_source(event: Option<&AgentEvent>) -> bool {
-    let Some(address) = event
-        .and_then(|event| event.workspace.as_ref())
-        .and_then(|workspace| workspace.client_address.as_deref())
-    else {
-        return false;
+/// There is deliberately no PID or workspace fallback beyond the stored
+/// candidates: a fallback that reports success while focusing a different
+/// window would consume the event in silence.
+pub(crate) fn focus_event_source(event: Option<&AgentEvent>) -> FocusOutcome {
+    let Some(workspace) = event.and_then(|event| event.workspace.as_ref()) else {
+        return FocusOutcome::NotFocused;
     };
-    let target = format!("hl.dsp.focus({{ window = \"address:{address}\" }})");
-    dispatch_succeeded(command_output(["hyprctl", "dispatch", target.as_str()]).as_deref())
+    let focused = workspace.candidate_addresses().into_iter().find(|address| {
+        let target = format!("hl.dsp.focus({{ window = \"address:{address}\" }})");
+        dispatch_succeeded(command_output(["hyprctl", "dispatch", target.as_str()]).as_deref())
+    });
+    workspace.focus_outcome(focused)
 }
 
 fn dispatch_succeeded(response: Option<&str>) -> bool {
@@ -159,6 +158,8 @@ fn hypr_client_to_workspace(client: &HyprClient) -> Option<WorkspaceInfo> {
             }),
         client_pid: pid,
         client_address: client.address.clone(),
+        client_addresses: Vec::new(),
+        source_process: None,
         title: client.title.clone().unwrap_or_default(),
         extra: serde_json::Map::new(),
     })
@@ -177,11 +178,25 @@ fn clients_by_pid(clients: &[HyprClient]) -> HashMap<i64, Vec<&HyprClient>> {
 /// A single-process terminal gives every window the same pid, so the source
 /// window is not knowable. Prefer a non-active sibling: the active window is the
 /// one whose completion `is_active_source_event` drops.
+fn source_rank(candidate: &HyprClient) -> (bool, i64) {
+    let rank = candidate.focus_history_id.unwrap_or(i64::MAX);
+    (rank == 0, rank)
+}
+
 fn pick_source_client<'a>(candidates: &[&'a HyprClient]) -> Option<&'a HyprClient> {
-    candidates.iter().copied().min_by_key(|candidate| {
-        let rank = candidate.focus_history_id.unwrap_or(i64::MAX);
-        (rank == 0, rank)
-    })
+    candidates
+        .iter()
+        .copied()
+        .min_by_key(|candidate| source_rank(candidate))
+}
+
+fn ranked_addresses(candidates: &[&HyprClient]) -> Vec<String> {
+    let mut ranked = candidates.to_vec();
+    ranked.sort_by_key(|candidate| source_rank(candidate));
+    ranked
+        .into_iter()
+        .filter_map(|candidate| candidate.address.clone())
+        .collect()
 }
 
 fn resolve_workspace_from_pid_chain(
@@ -190,15 +205,45 @@ fn resolve_workspace_from_pid_chain(
 ) -> Option<WorkspaceInfo> {
     let by_pid = clients_by_pid(clients);
     let mut seen = HashSet::new();
+    let mut previous = None;
     for pid in pid_chain(start_pid, 80) {
         if !seen.insert(pid) {
             break;
         }
         if let Some(candidates) = by_pid.get(&pid) {
-            return pick_source_client(candidates).and_then(hypr_client_to_workspace);
+            return pick_source_client(candidates).and_then(|picked| {
+                let mut workspace = hypr_client_to_workspace(picked)?;
+                if workspace.client_address.is_some() {
+                    workspace.client_addresses = ranked_addresses(candidates);
+                }
+                workspace.source_process = previous.and_then(process_ref);
+                Some(workspace)
+            });
         }
+        previous = Some(pid);
     }
     None
+}
+
+pub(crate) fn process_ref(pid: i64) -> Option<ProcessRef> {
+    Some(ProcessRef {
+        pid,
+        start_time: read_proc_start_time(pid)?,
+    })
+}
+
+pub(crate) fn process_is_alive(process: &ProcessRef) -> bool {
+    read_proc_start_time(process.pid) == Some(process.start_time)
+}
+
+fn read_proc_start_time(pid: i64) -> Option<u64> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let close_paren = stat.rfind(')')?;
+    stat[close_paren + 2..]
+        .split_whitespace()
+        .nth(19)?
+        .parse()
+        .ok()
 }
 
 fn read_proc_parent_pid(pid: i64) -> Option<i64> {
@@ -279,9 +324,89 @@ mod tests {
             title: None,
             monitor: None,
             monitor_name: None,
-            workspace: None,
+            workspace: Some(HyprWorkspace {
+                id: Some(3),
+                name: Some("3".to_owned()),
+            }),
             focus_history_id,
         }
+    }
+
+    #[test]
+    fn a_process_ref_tracks_liveness_through_proc() -> Result<(), Box<dyn std::error::Error>> {
+        let own_pid = i64::from(std::process::id());
+        let own = process_ref(own_pid).ok_or("no process ref for the test process")?;
+
+        assert!(process_is_alive(&own));
+        assert!(!process_is_alive(&ProcessRef {
+            start_time: own.start_time.wrapping_add(1),
+            ..own
+        }));
+        assert_eq!(process_ref(999_999_999), None);
+        Ok(())
+    }
+
+    #[test]
+    fn captures_the_window_shell_as_the_source_process() -> Result<(), Box<dyn std::error::Error>> {
+        let own_pid = i64::from(std::process::id());
+        let parent_pid = read_proc_parent_pid(own_pid).ok_or("no parent pid")?;
+        let clients = vec![HyprClient {
+            pid: Some(parent_pid),
+            ..client_with_focus_history("0xshell", Some(2))
+        }];
+
+        let workspace =
+            resolve_workspace_from_pid_chain(own_pid, &clients).ok_or("no workspace")?;
+        let source = workspace.source_process.ok_or("no source process")?;
+
+        assert_eq!(source.pid, own_pid);
+        assert!(process_is_alive(&source));
+        Ok(())
+    }
+
+    #[test]
+    fn a_window_that_is_its_own_hook_parent_gets_no_source_process(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let clients = vec![client_with_focus_history("0xdirect", Some(2))];
+
+        let workspace = resolve_workspace_from_pid_chain(4682, &clients).ok_or("no workspace")?;
+
+        assert_eq!(workspace.source_process, None);
+        Ok(())
+    }
+
+    #[test]
+    fn captures_ranked_candidate_addresses_for_a_shared_pid(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let clients = vec![
+            client_with_focus_history("0xactive", Some(0)),
+            client_with_focus_history("0xold", Some(4)),
+            client_with_focus_history("0xrecent", Some(2)),
+        ];
+
+        let workspace = resolve_workspace_from_pid_chain(4682, &clients).ok_or("no workspace")?;
+
+        assert_eq!(workspace.client_address.as_deref(), Some("0xrecent"));
+        assert_eq!(
+            workspace.client_addresses,
+            ["0xrecent", "0xold", "0xactive"]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_candidate_without_an_address_is_left_out_of_the_candidate_list(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let addressless = HyprClient {
+            address: None,
+            ..client_with_focus_history("unused", Some(5))
+        };
+        let clients = vec![client_with_focus_history("0xrecent", Some(2)), addressless];
+
+        let workspace = resolve_workspace_from_pid_chain(4682, &clients).ok_or("no workspace")?;
+
+        assert_eq!(workspace.client_addresses, ["0xrecent"]);
+        Ok(())
     }
 
     fn picked_address(clients: &[HyprClient]) -> Option<String> {
