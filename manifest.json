@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.bengous.agent-notifier",
   "name": "Agent Notifier",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "author": "bengous",
   "license": "MIT",
   "description": "Agent completion center: see which agent finished where, jump to its window.",

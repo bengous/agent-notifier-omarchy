@@ -13,6 +13,7 @@ BarWidget {
   readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/agent-notifier"
 
   property var events: []
+  property var versionInfo: null
   property bool cliMissing: false
   property bool popupOpen: false
   property bool refreshQueued: false
@@ -40,6 +41,15 @@ BarWidget {
       lines.push(String(event.displayLabel || "") + " " + root.absoluteTime(event.createdAt))
     }
     return lines.length === 0 ? "No agent completions" : lines.join("\n")
+  }
+
+  readonly property string versionTooltip: {
+    if (!versionInfo) return "agent-notifier\nversion info unavailable"
+    var lines = ["agent-notifier " + versionInfo.version]
+    lines.push("commit " + versionInfo.commit + (versionInfo.dirty ? " (dirty)" : ""))
+    if (versionInfo.commitDate && versionInfo.commitDate !== "unknown")
+      lines.push("committed " + String(versionInfo.commitDate).slice(0, 10))
+    return lines.join("\n")
   }
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -103,6 +113,19 @@ BarWidget {
       return
     }
     root.events = parsed && Array.isArray(parsed.events) ? parsed.events : []
+  }
+
+  // Silent on failure: the fallback tooltip text is the user-facing signal,
+  // and an older binary without version-json must not spam the journal.
+  function applyVersionInfo(raw) {
+    var parsed = null
+    try {
+      parsed = JSON.parse(String(raw || ""))
+    } catch (error) {
+      return
+    }
+    if (parsed && typeof parsed.version === "string" && parsed.version !== "")
+      root.versionInfo = parsed
   }
 
   // A binary that is not on PATH never reaches onExited: Process reverts
@@ -195,6 +218,23 @@ BarWidget {
   }
 
   Process {
+    id: versionProcess
+    running: true
+    command: ["agent-notifier", "version-json"]
+
+    stdout: StdioCollector {
+      id: versionOutput
+      waitForEnd: true
+    }
+
+    stderr: StdioCollector { waitForEnd: true }
+
+    onExited: function(exitCode) {
+      if (exitCode === 0) root.applyVersionInfo(versionOutput.text)
+    }
+  }
+
+  Process {
     id: commandProcess
     property bool exitSeen: false
 
@@ -261,11 +301,11 @@ BarWidget {
 
     ColumnLayout {
       anchors.fill: parent
-      spacing: Style.space(10)
+      spacing: Style.spacing.xl
 
       RowLayout {
         Layout.fillWidth: true
-        spacing: Style.space(8)
+        spacing: Style.spacing.lg
 
         Text {
           text: "Agent completions"
@@ -286,6 +326,16 @@ BarWidget {
         }
       }
 
+      Text {
+        Layout.fillWidth: true
+        visible: root.events.length > 0
+        text: "Click a completion to focus its session"
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
+      }
+
       ListView {
         id: eventList
         Layout.fillWidth: true
@@ -300,23 +350,19 @@ BarWidget {
 
         section.delegate: Column {
           width: ListView.view.width
+          spacing: Style.spacing.sm
 
-          Rectangle {
-            width: parent.width
-            height: 1
-            color: root.dim
-            opacity: 0.3
+          PanelSeparator {
+            foreground: root.foreground
           }
 
-          Text {
+          PanelSectionHeader {
             width: parent.width
-            topPadding: Style.space(4)
             leftPadding: Style.spacing.rowPaddingX
             rightPadding: Style.spacing.rowPaddingX
             text: section
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            foreground: root.foreground
+            fontFamily: root.fontFamily
             elide: Text.ElideRight
           }
         }
@@ -330,7 +376,27 @@ BarWidget {
           width: ListView.view.width
           implicitHeight: rowText.implicitHeight + Style.spacing.rowGap * 2
           radius: Style.cornerRadius
-          color: rowHover.containsMouse ? Style.hoverFill : "transparent"
+          color: rowHover.pressed ? Style.pressedFill : rowHover.containsMouse ? Style.hoverFill : "transparent"
+
+          Behavior on color {
+            ColorAnimation { duration: 120 }
+          }
+
+          // Brand-colored unread rail: encodes which agent and unread in one
+          // element. It sits inside the rowPaddingX inset, so read and unread
+          // titles stay aligned.
+          Rectangle {
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: Style.space(4)
+            anchors.topMargin: Style.space(6)
+            anchors.bottomMargin: Style.space(6)
+            width: Style.space(3)
+            radius: width / 2
+            color: root.brandColor(eventRow.modelData.agent)
+            opacity: eventRow.unread ? 1 : 0
+          }
 
           Column {
             id: rowText
@@ -429,18 +495,35 @@ BarWidget {
         }
       }
 
+      PanelSeparator {
+        Layout.fillWidth: true
+        foreground: root.foreground
+      }
+
       RowLayout {
         Layout.fillWidth: true
         spacing: Style.spacing.sm
 
-        Text {
-          Layout.fillWidth: true
-          text: "Click a row to focus its session"
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          elide: Text.ElideRight
+        Button {
+          id: infoButton
+          iconText: "󰋼"
+          iconSize: Style.font.iconSmall
+          foreground: infoButton.hot ? root.foreground : root.dim
+          fontFamily: root.fontFamily
+          horizontalPadding: Style.space(5)
+          verticalPadding: Style.space(3)
+
+          // Button's built-in tooltip centers on the button and would clip
+          // outside the card-sized popup surface; x: 0 keeps it inside.
+          PanelToolTip {
+            visible: infoButton.hot
+            text: root.versionTooltip
+            fontFamily: root.fontFamily
+            x: 0
+          }
         }
+
+        Item { Layout.fillWidth: true }
 
         Button {
           id: clearRead
