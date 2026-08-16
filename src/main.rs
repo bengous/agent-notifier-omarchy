@@ -14,12 +14,14 @@ mod hyprland;
 mod pi_event;
 mod presentation;
 mod process;
+mod session_title;
 mod state;
 mod storage;
 
 use cli::CliCommand;
 use codex_event::{
     build_stop_event, current_git_branch, parse_codex_stop_input, project_root, random_hex,
+    CodexStopInput,
 };
 use pi_event::{build_pi_event, parse_pi_hook_input};
 use presentation::{display_state_from_events, event_label, status_output, StatusOutput};
@@ -242,6 +244,22 @@ fn resolve_source_workspace() -> Option<WorkspaceInfo> {
     hyprland::resolve_current_workspace().or(first)
 }
 
+fn hook_session_id(event: &AgentEvent) -> Option<&str> {
+    Some(event.session_id.as_str()).filter(|id| !id.is_empty() && *id != "unknown")
+}
+
+fn resolve_session_title(
+    agent: &str,
+    input: &CodexStopInput,
+    session_id: Option<&str>,
+) -> Option<String> {
+    if agent == "claude" {
+        let transcript_path = input.transcript_path.as_deref()?;
+        return session_title::claude_session_title(Path::new(transcript_path), session_id);
+    }
+    session_title::codex_session_title(&session_title::codex_sessions_dir()?, session_id?)
+}
+
 fn handle_hook(agent: &str) -> io::Result<()> {
     let mut raw = String::new();
     io::stdin().read_to_string(&mut raw)?;
@@ -260,6 +278,11 @@ fn handle_hook(agent: &str) -> io::Result<()> {
         now,
         &random_hex(4),
     );
+    let session_title = resolve_session_title(agent, &input, hook_session_id(&event));
+    let event = AgentEvent {
+        session_title,
+        ..event
+    };
     capture_completion_event(&event, now)
 }
 
@@ -507,7 +530,6 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex_event::CodexStopInput;
     use crate::pi_event::PiHookInput;
     use crate::state::parse_state;
     use std::fs;
@@ -520,6 +542,7 @@ mod tests {
                 cwd: Some("/repo/dotfiles".to_owned()),
                 session_id: Some("session-1".to_owned()),
                 session_id_camel: None,
+                transcript_path: None,
             },
             "/repo/dotfiles".to_owned(),
             "/repo/dotfiles".to_owned(),
@@ -668,6 +691,7 @@ mod tests {
                 cwd: Some("/repo/dotfiles".to_owned()),
                 session_id: Some("claude-session-1".to_owned()),
                 session_id_camel: None,
+                transcript_path: None,
             },
             "/repo/dotfiles".to_owned(),
             "/repo/dotfiles".to_owned(),
@@ -1058,6 +1082,50 @@ mod tests {
         let state = parse_state(raw)?;
         assert_eq!(state.events.len(), 1);
         Ok(())
+    }
+
+    #[test]
+    fn parses_v1_state_without_session_title() -> Result<(), Box<dyn std::error::Error>> {
+        let raw = r#"{"version":1,"events":[{"id":"e","agent":"claude","kind":"main",
+            "projectName":"p","projectPath":"/repo/dotfiles","cwd":"/repo/dotfiles",
+            "sessionId":"s","createdAt":"2026-07-26T08:00:00.000Z",
+            "workspace":{"id":1,"name":"1","monitor":"DP-3","clientPid":42,"title":"t"},
+            "status":"unread"}]}"#;
+        let state = parse_state(raw)?;
+
+        assert_eq!(
+            state
+                .events
+                .first()
+                .and_then(|event| event.session_title.clone()),
+            None
+        );
+        assert_eq!(state.events.first().map(event_label).as_deref(), Some("t"));
+        Ok(())
+    }
+
+    #[test]
+    fn a_session_title_outranks_the_window_title() {
+        let titled = AgentEvent {
+            session_title: Some("Label events by session".to_owned()),
+            ..base_event()
+        };
+
+        assert_eq!(event_label(&titled), "Label events by session");
+        assert_eq!(
+            event_label(&AgentEvent {
+                session_title: Some("   ".to_owned()),
+                ..base_event()
+            }),
+            "dotfiles | main"
+        );
+    }
+
+    #[test]
+    fn a_session_title_is_omitted_from_stored_state_when_absent() {
+        let json = serde_json::to_string(&base_event()).unwrap_or_default();
+
+        assert!(!json.contains("sessionTitle"));
     }
 
     #[test]

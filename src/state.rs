@@ -43,6 +43,12 @@ pub(crate) struct AgentEvent {
     pub(crate) cwd: String,
     #[serde(rename = "sessionId")]
     pub(crate) session_id: String,
+    #[serde(
+        default,
+        rename = "sessionTitle",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) session_title: Option<String>,
     #[serde(rename = "createdAt")]
     pub(crate) created_at: String,
     pub(crate) workspace: Option<WorkspaceInfo>,

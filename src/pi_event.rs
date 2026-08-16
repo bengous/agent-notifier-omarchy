@@ -62,6 +62,7 @@ pub(crate) fn build_pi_event(
             .or_else(|| input.leaf_id_camel.clone())
             .or_else(|| env::var("PI_SESSION_ID").ok())
             .unwrap_or_else(|| "unknown".to_owned()),
+        session_title: None,
         created_at: now.to_rfc3339_opts(SecondsFormat::Millis, true),
         workspace,
         status: EventStatus::Unread,

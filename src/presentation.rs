@@ -48,6 +48,14 @@ pub(crate) fn clean_workspace_title(title: &str) -> String {
 }
 
 pub(crate) fn event_label(event: &AgentEvent) -> String {
+    if let Some(title) = event
+        .session_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+    {
+        return title.to_owned();
+    }
     if let Some(workspace) = &event.workspace {
         let title = clean_workspace_title(&workspace.title);
         if !title.is_empty() {

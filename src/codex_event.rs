@@ -18,6 +18,8 @@ pub(crate) struct CodexStopInput {
     pub(crate) session_id: Option<String>,
     #[serde(default, rename = "sessionId")]
     pub(crate) session_id_camel: Option<String>,
+    #[serde(default)]
+    pub(crate) transcript_path: Option<String>,
 }
 
 pub(crate) fn parse_codex_stop_input(raw: &str) -> CodexStopInput {
@@ -68,6 +70,7 @@ pub(crate) fn build_stop_event(
             .or_else(|| input.session_id_camel.clone())
             .or_else(|| env::var("CODEX_SESSION_ID").ok())
             .unwrap_or_else(|| "unknown".to_owned()),
+        session_title: None,
         created_at: now.to_rfc3339_opts(SecondsFormat::Millis, true),
         workspace,
         status: EventStatus::Unread,
