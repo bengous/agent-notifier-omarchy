@@ -24,6 +24,8 @@ struct HyprClient {
     #[serde(rename = "monitorName")]
     monitor_name: Option<String>,
     workspace: Option<HyprWorkspace>,
+    #[serde(default, rename = "focusHistoryID")]
+    focus_history_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -161,21 +163,38 @@ fn hypr_client_to_workspace(client: &HyprClient) -> Option<WorkspaceInfo> {
     })
 }
 
+fn clients_by_pid(clients: &[HyprClient]) -> HashMap<i64, Vec<&HyprClient>> {
+    let mut by_pid: HashMap<i64, Vec<&HyprClient>> = HashMap::new();
+    for client in clients {
+        if let Some(pid) = client.pid {
+            by_pid.entry(pid).or_default().push(client);
+        }
+    }
+    by_pid
+}
+
+/// A single-process terminal gives every window the same pid, so the source
+/// window is not knowable. Prefer a non-active sibling: the active window is the
+/// one whose completion `is_active_source_event` drops.
+fn pick_source_client<'a>(candidates: &[&'a HyprClient]) -> Option<&'a HyprClient> {
+    candidates.iter().copied().min_by_key(|candidate| {
+        let rank = candidate.focus_history_id.unwrap_or(i64::MAX);
+        (rank == 0, rank)
+    })
+}
+
 fn resolve_workspace_from_pid_chain(
     start_pid: i64,
     clients: &[HyprClient],
 ) -> Option<WorkspaceInfo> {
-    let by_pid = clients
-        .iter()
-        .filter_map(|client| Some((client.pid?, client)))
-        .collect::<HashMap<_, _>>();
+    let by_pid = clients_by_pid(clients);
     let mut seen = HashSet::new();
     for pid in pid_chain(start_pid, 80) {
         if !seen.insert(pid) {
             break;
         }
-        if let Some(client) = by_pid.get(&pid) {
-            return hypr_client_to_workspace(client);
+        if let Some(candidates) = by_pid.get(&pid) {
+            return pick_source_client(candidates).and_then(hypr_client_to_workspace);
         }
     }
     None
@@ -237,6 +256,7 @@ mod tests {
                 monitor: Some(Value::from(0)),
                 monitor_name: None,
                 workspace: None,
+                focus_history_id: None,
             }],
             &[HyprMonitor {
                 id: Some(0),
@@ -249,6 +269,73 @@ mod tests {
                 .and_then(|client| client.monitor_name.as_deref()),
             Some("DP-3")
         );
+    }
+
+    fn client_with_focus_history(address: &str, focus_history_id: Option<i64>) -> HyprClient {
+        HyprClient {
+            pid: Some(4682),
+            address: Some(address.to_owned()),
+            title: None,
+            monitor: None,
+            monitor_name: None,
+            workspace: None,
+            focus_history_id,
+        }
+    }
+
+    fn picked_address(clients: &[HyprClient]) -> Option<String> {
+        let candidates = clients.iter().collect::<Vec<_>>();
+        pick_source_client(&candidates).and_then(|client| client.address.clone())
+    }
+
+    #[test]
+    fn picks_the_most_recently_focused_background_window() {
+        let clients = vec![
+            client_with_focus_history("0xold", Some(4)),
+            client_with_focus_history("0xrecent", Some(2)),
+        ];
+
+        assert_eq!(picked_address(&clients).as_deref(), Some("0xrecent"));
+    }
+
+    #[test]
+    fn prefers_a_background_window_over_the_active_one() {
+        let clients = vec![
+            client_with_focus_history("0xactive", Some(0)),
+            client_with_focus_history("0xbackground", Some(7)),
+        ];
+
+        assert_eq!(picked_address(&clients).as_deref(), Some("0xbackground"));
+    }
+
+    #[test]
+    fn falls_back_to_the_active_window_when_it_is_the_only_candidate() {
+        let clients = vec![client_with_focus_history("0xactive", Some(0))];
+
+        assert_eq!(picked_address(&clients).as_deref(), Some("0xactive"));
+    }
+
+    #[test]
+    fn a_client_without_focus_history_is_the_last_resort() {
+        let clients = vec![
+            client_with_focus_history("0xunknown", None),
+            client_with_focus_history("0xknown", Some(9)),
+        ];
+
+        assert_eq!(picked_address(&clients).as_deref(), Some("0xknown"));
+    }
+
+    #[test]
+    fn reads_the_hyprland_focus_history_field() -> Result<(), Box<dyn std::error::Error>> {
+        let clients = parse_clients_output(Some(
+            r#"[{"pid":4682,"address":"0xbeef","focusHistoryID":3}]"#.to_owned(),
+        ))?;
+
+        assert_eq!(
+            clients.first().and_then(|client| client.focus_history_id),
+            Some(3)
+        );
+        Ok(())
     }
 
     #[test]

@@ -617,15 +617,11 @@ mod tests {
     }
 
     fn event_with_address(id: &str, pid: i64, address: &str) -> AgentEvent {
-        let mut base = base_event();
+        let mut base = event_with_pid(id, pid);
         if let Some(workspace) = &mut base.workspace {
-            workspace.client_pid = pid;
             workspace.client_address = Some(address.to_owned());
         }
-        AgentEvent {
-            id: id.to_owned(),
-            ..base
-        }
+        base
     }
 
     fn event_in_project(
@@ -941,22 +937,38 @@ mod tests {
     }
 
     #[test]
-    fn client_pid_takes_precedence_over_session_id() {
+    fn two_sessions_in_one_window_stay_separate() {
         let state = AgentNotifierState {
             version: 1,
             events: vec![event_with_session("old", "session-1")],
         };
         let state = append_and_trim(state, event_with_session("new", "session-2"));
 
-        assert_eq!(state.events.len(), 1);
-        assert_eq!(
-            state.events.first().map(|event| event.id.as_str()),
-            Some("new")
-        );
+        assert_eq!(state.events.len(), 2);
     }
 
     #[test]
-    fn one_session_across_two_windows_stays_separate() {
+    fn two_sessions_sharing_one_terminal_pid_stay_separate() {
+        let first = AgentEvent {
+            session_id: "session-1".to_owned(),
+            ..event_with_address("first", 4682, "0x55e2cd8284a0")
+        };
+        let second = AgentEvent {
+            session_id: "session-2".to_owned(),
+            ..event_with_address("second", 4682, "0x55e2cd756b00")
+        };
+        let state = AgentNotifierState {
+            version: 1,
+            events: vec![first],
+        };
+        let state = append_and_trim(state, second);
+
+        assert_eq!(state.events.len(), 2);
+        assert_eq!(status_output(&state.events).text, "agents 󰂚 2");
+    }
+
+    #[test]
+    fn one_session_moved_to_another_window_merges_into_the_newest() {
         let mut second = event_with_session("second", "session-1");
         if let Some(workspace) = &mut second.workspace {
             workspace.client_pid = 301;
@@ -967,7 +979,11 @@ mod tests {
         };
         let state = append_and_trim(state, second);
 
-        assert_eq!(state.events.len(), 2);
+        assert_eq!(state.events.len(), 1);
+        assert_eq!(
+            state.events.first().map(|event| event.id.as_str()),
+            Some("second")
+        );
     }
 
     #[test]

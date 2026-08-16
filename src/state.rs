@@ -150,13 +150,11 @@ fn event_matches_address(event: &AgentEvent, address: &str) -> bool {
 }
 
 fn dedupe_key(event: &AgentEvent) -> Option<String> {
-    if let Some(workspace) = &event.workspace {
-        return Some(format!("{}:pid:{}", event.agent, workspace.client_pid));
+    if !event.session_id.is_empty() && event.session_id != "unknown" {
+        return Some(format!("{}:session:{}", event.agent, event.session_id));
     }
-    if event.session_id.is_empty() || event.session_id == "unknown" {
-        return None;
-    }
-    Some(format!("{}:{}", event.agent, event.session_id))
+    let workspace = event.workspace.as_ref()?;
+    Some(format!("{}:pid:{}", event.agent, workspace.client_pid))
 }
 
 pub(crate) fn dedupe_events(events: Vec<AgentEvent>) -> Vec<AgentEvent> {
