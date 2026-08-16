@@ -62,11 +62,20 @@ fn focusable_events_for_addresses(
 }
 
 fn event_has_live_source(event: &AgentEvent, active: &HashSet<String>) -> bool {
+    event.workspace.as_ref().is_some_and(|workspace| {
+        workspace
+            .candidate_addresses()
+            .iter()
+            .any(|address| active.contains(*address))
+    })
+}
+
+fn focused_the_primary_window(event: &AgentEvent, focused: &str) -> bool {
     event
         .workspace
         .as_ref()
         .and_then(|workspace| workspace.client_address.as_deref())
-        .is_some_and(|address| active.contains(address))
+        == Some(focused)
 }
 
 fn prune_stale_events(
@@ -429,8 +438,13 @@ pub(crate) fn run() -> io::Result<i32> {
             let event = focusable
                 .iter()
                 .find(|event| event.status == EventStatus::Unread);
-            if hyprland::focus_event_source(event) {
-                if let Some(id) = event.map(|event| event.id.clone()) {
+            if let Some(focused) = hyprland::focus_event_source(event) {
+                // A fallback focus leaves the event unread: the source window
+                // was not reached, so the completion is not acknowledged.
+                if let Some(id) = event
+                    .filter(|event| focused_the_primary_window(event, &focused))
+                    .map(|event| event.id.clone())
+                {
                     let _ = with_state_update(&state_path()?, Utc::now(), |state| {
                         set_event_status(state, &id, EventStatus::Read)
                     })?;
@@ -441,13 +455,15 @@ pub(crate) fn run() -> io::Result<i32> {
         CliCommand::FocusId(id) => {
             let state = read_state_or_recover(&state_path()?, Utc::now())?;
             let event = state.events.iter().find(|event| event.id == id);
-            if !hyprland::focus_event_source(event) {
+            let Some(focused) = hyprland::focus_event_source(event) else {
                 eprintln!("agent-notifier: could not focus the source window for {id}");
                 return Ok(1);
+            };
+            if event.is_some_and(|event| focused_the_primary_window(event, &focused)) {
+                let _ = with_state_update(&state_path()?, Utc::now(), |state| {
+                    set_event_status(state, &id, EventStatus::Read)
+                })?;
             }
-            let _ = with_state_update(&state_path()?, Utc::now(), |state| {
-                set_event_status(state, &id, EventStatus::Read)
-            })?;
             Ok(0)
         }
         CliCommand::MarkRead(id) => {

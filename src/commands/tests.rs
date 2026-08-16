@@ -25,6 +25,7 @@ fn base_event() -> AgentEvent {
             monitor: "DP-3".to_owned(),
             client_pid: 300,
             client_address: None,
+            client_addresses: Vec::new(),
             title: "dotfiles | main".to_owned(),
             extra: serde_json::Map::new(),
         }),
@@ -85,6 +86,18 @@ fn event_with_address(id: &str, pid: i64, address: &str) -> AgentEvent {
     let mut base = event_with_pid(id, pid);
     if let Some(workspace) = &mut base.workspace {
         workspace.client_address = Some(address.to_owned());
+    }
+    base
+}
+
+fn event_with_candidates(id: &str, pid: i64, addresses: &[&str]) -> AgentEvent {
+    let mut base = event_with_pid(id, pid);
+    if let Some(workspace) = &mut base.workspace {
+        workspace.client_address = addresses.first().map(|address| (*address).to_owned());
+        workspace.client_addresses = addresses
+            .iter()
+            .map(|address| (*address).to_owned())
+            .collect();
     }
     base
 }
@@ -375,6 +388,7 @@ fn appends_newest_first_and_trims() {
                         monitor: "DP-3".to_owned(),
                         client_pid: i64::from(index),
                         client_address: None,
+                        client_addresses: Vec::new(),
                         title: "dotfiles | main".to_owned(),
                         extra: serde_json::Map::new(),
                     })
@@ -769,6 +783,81 @@ fn includes_only_events_matching_live_hyprland_addresses() {
         Some("live-window")
     );
     assert_eq!(status_output(&focusable).text, "agents 󰂚 1");
+}
+
+#[test]
+fn an_event_with_any_live_candidate_stays_focusable() {
+    let event = event_with_candidates("guessed", 4682, &["0xguess", "0xother"]);
+    let active = HashSet::from(["0xother".to_owned()]);
+
+    assert_eq!(focusable_events_for_addresses(&[event], &active).len(), 1);
+}
+
+#[test]
+fn an_event_with_no_live_candidate_is_pruned() {
+    let state = state_of(vec![event_with_candidates(
+        "guessed",
+        4682,
+        &["0xguess", "0xother"],
+    )]);
+    let active = HashSet::from(["0xelse".to_owned()]);
+
+    assert!(prune_stale_events(state, &active).events.is_empty());
+}
+
+#[test]
+fn a_fallback_focus_does_not_acknowledge_the_event() {
+    let event = event_with_candidates("guessed", 4682, &["0xguess", "0xother"]);
+
+    assert!(focused_the_primary_window(&event, "0xguess"));
+    assert!(!focused_the_primary_window(&event, "0xother"));
+}
+
+#[test]
+fn the_source_is_certain_only_when_the_active_window_is_the_sole_candidate(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let sole = workspace(&event_with_candidates("sole", 1, &["0xonly"]))?;
+    let shared = workspace(&event_with_candidates("shared", 1, &["0xguess", "0xother"]))?;
+    let legacy = workspace(&event_with_address("legacy", 1, "0xlegacy"))?;
+
+    assert!(sole.is_sole_candidate("0xonly"));
+    assert!(!shared.is_sole_candidate("0xguess"));
+    assert!(!shared.is_sole_candidate("0xother"));
+    assert!(legacy.is_sole_candidate("0xlegacy"));
+    assert!(!legacy.is_sole_candidate("0xelse"));
+    Ok(())
+}
+
+#[test]
+fn candidate_addresses_serialize_additively() -> Result<(), Box<dyn std::error::Error>> {
+    let legacy_json = serde_json::to_string(&event_with_address("legacy", 1, "0xbeef"))?;
+    assert!(!legacy_json.contains("clientAddresses"));
+
+    let event = event_with_candidates("guessed", 4682, &["0xguess", "0xother"]);
+    let value = serde_json::to_value(&event)?;
+    assert_eq!(value["workspace"]["clientAddresses"][0], "0xguess");
+    assert_eq!(value["workspace"]["clientAddresses"][1], "0xother");
+    Ok(())
+}
+
+#[test]
+fn a_parsed_v1_workspace_without_the_candidate_list_falls_back_to_the_primary(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let raw = r#"{"version":1,"events":[{"id":"e","agent":"claude","kind":"main",
+        "projectName":"p","projectPath":"/repo/dotfiles","cwd":"/repo/dotfiles",
+        "sessionId":"s","createdAt":"2026-07-26T08:00:00.000Z",
+        "workspace":{"id":1,"name":"1","monitor":"DP-3","clientPid":42,
+            "clientAddress":"0xbeef","title":"t"},
+        "status":"unread"}]}"#;
+    let state = parse_state(raw)?;
+    let workspace = state
+        .events
+        .first()
+        .and_then(|event| event.workspace.clone())
+        .ok_or("missing workspace")?;
+
+    assert_eq!(workspace.candidate_addresses(), ["0xbeef"]);
+    Ok(())
 }
 
 #[test]

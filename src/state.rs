@@ -22,6 +22,15 @@ pub(crate) struct WorkspaceInfo {
         skip_serializing_if = "Option::is_none"
     )]
     pub(crate) client_address: Option<String>,
+    /// Every window that can be the source, best guess first. A single-process
+    /// terminal gives all its windows one pid, so the true source window is not
+    /// knowable at capture time. Invariant: the first entry is `client_address`.
+    #[serde(
+        default,
+        rename = "clientAddresses",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub(crate) client_addresses: Vec<String>,
     pub(crate) title: String,
     /// Keeps keys written by a newer binary alive across a rewrite by this one.
     /// This only covers additive-key schema evolution: a new `EventStatus`
@@ -30,6 +39,22 @@ pub(crate) struct WorkspaceInfo {
     /// serde's flatten buffering does not carry them.
     #[serde(flatten)]
     pub(crate) extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl WorkspaceInfo {
+    /// Legacy states carry only the primary address.
+    pub(crate) fn candidate_addresses(&self) -> Vec<&str> {
+        if self.client_addresses.is_empty() {
+            self.client_address.as_deref().into_iter().collect()
+        } else {
+            self.client_addresses.iter().map(String::as_str).collect()
+        }
+    }
+
+    /// A certain source: the candidate set is exactly this one window.
+    pub(crate) fn is_sole_candidate(&self, address: &str) -> bool {
+        matches!(self.candidate_addresses().as_slice(), [only] if *only == address)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

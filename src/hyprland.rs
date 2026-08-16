@@ -65,31 +65,32 @@ pub(crate) fn resolve_current_workspace() -> Option<WorkspaceInfo> {
     resolve_workspace_from_pid_chain(current_parent_pid(), &clients)
 }
 
+/// Drop a completion only when the source is certain: the candidate set is
+/// exactly the active window. An uncertain set keeps the event, even when the
+/// best guess is active.
 pub(crate) fn is_active_source_event(event: &AgentEvent) -> bool {
-    let Some(source) = event
-        .workspace
-        .as_ref()
-        .and_then(|workspace| workspace.client_address.as_deref())
-    else {
+    let Some(workspace) = event.workspace.as_ref() else {
         return false;
     };
-    active_window_address().is_some_and(|active| active == source)
+    active_window_address().is_some_and(|active| workspace.is_sole_candidate(&active))
 }
 
-/// Focus the exact source window. Returns false when it cannot be focused.
+/// Focus the first candidate window that still exists and return its address.
 ///
-/// There is deliberately no PID or workspace fallback: the old workspace fallback
-/// could report success while focusing a different window, and callers now use
-/// this result to decide whether to acknowledge the event.
-pub(crate) fn focus_event_source(event: Option<&AgentEvent>) -> bool {
-    let Some(address) = event
-        .and_then(|event| event.workspace.as_ref())
-        .and_then(|workspace| workspace.client_address.as_deref())
-    else {
-        return false;
-    };
-    let target = format!("hl.dsp.focus({{ window = \"address:{address}\" }})");
-    dispatch_succeeded(command_output(["hyprctl", "dispatch", target.as_str()]).as_deref())
+/// There is deliberately no PID or workspace fallback beyond the stored
+/// candidates: a fallback that reports success while focusing a different
+/// window would consume the event in silence. Callers acknowledge the event
+/// only when the returned address is the primary one.
+pub(crate) fn focus_event_source(event: Option<&AgentEvent>) -> Option<String> {
+    let workspace = event.and_then(|event| event.workspace.as_ref())?;
+    workspace
+        .candidate_addresses()
+        .into_iter()
+        .find(|address| {
+            let target = format!("hl.dsp.focus({{ window = \"address:{address}\" }})");
+            dispatch_succeeded(command_output(["hyprctl", "dispatch", target.as_str()]).as_deref())
+        })
+        .map(str::to_owned)
 }
 
 fn dispatch_succeeded(response: Option<&str>) -> bool {
@@ -159,6 +160,7 @@ fn hypr_client_to_workspace(client: &HyprClient) -> Option<WorkspaceInfo> {
             }),
         client_pid: pid,
         client_address: client.address.clone(),
+        client_addresses: Vec::new(),
         title: client.title.clone().unwrap_or_default(),
         extra: serde_json::Map::new(),
     })
@@ -177,11 +179,25 @@ fn clients_by_pid(clients: &[HyprClient]) -> HashMap<i64, Vec<&HyprClient>> {
 /// A single-process terminal gives every window the same pid, so the source
 /// window is not knowable. Prefer a non-active sibling: the active window is the
 /// one whose completion `is_active_source_event` drops.
+fn source_rank(candidate: &HyprClient) -> (bool, i64) {
+    let rank = candidate.focus_history_id.unwrap_or(i64::MAX);
+    (rank == 0, rank)
+}
+
 fn pick_source_client<'a>(candidates: &[&'a HyprClient]) -> Option<&'a HyprClient> {
-    candidates.iter().copied().min_by_key(|candidate| {
-        let rank = candidate.focus_history_id.unwrap_or(i64::MAX);
-        (rank == 0, rank)
-    })
+    candidates
+        .iter()
+        .copied()
+        .min_by_key(|candidate| source_rank(candidate))
+}
+
+fn ranked_addresses(candidates: &[&HyprClient]) -> Vec<String> {
+    let mut ranked = candidates.to_vec();
+    ranked.sort_by_key(|candidate| source_rank(candidate));
+    ranked
+        .into_iter()
+        .filter_map(|candidate| candidate.address.clone())
+        .collect()
 }
 
 fn resolve_workspace_from_pid_chain(
@@ -195,7 +211,13 @@ fn resolve_workspace_from_pid_chain(
             break;
         }
         if let Some(candidates) = by_pid.get(&pid) {
-            return pick_source_client(candidates).and_then(hypr_client_to_workspace);
+            return pick_source_client(candidates).and_then(|picked| {
+                let mut workspace = hypr_client_to_workspace(picked)?;
+                if workspace.client_address.is_some() {
+                    workspace.client_addresses = ranked_addresses(candidates);
+                }
+                Some(workspace)
+            });
         }
     }
     None
@@ -279,9 +301,46 @@ mod tests {
             title: None,
             monitor: None,
             monitor_name: None,
-            workspace: None,
+            workspace: Some(HyprWorkspace {
+                id: Some(3),
+                name: Some("3".to_owned()),
+            }),
             focus_history_id,
         }
+    }
+
+    #[test]
+    fn captures_ranked_candidate_addresses_for_a_shared_pid(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let clients = vec![
+            client_with_focus_history("0xactive", Some(0)),
+            client_with_focus_history("0xold", Some(4)),
+            client_with_focus_history("0xrecent", Some(2)),
+        ];
+
+        let workspace = resolve_workspace_from_pid_chain(4682, &clients).ok_or("no workspace")?;
+
+        assert_eq!(workspace.client_address.as_deref(), Some("0xrecent"));
+        assert_eq!(
+            workspace.client_addresses,
+            ["0xrecent", "0xold", "0xactive"]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_candidate_without_an_address_is_left_out_of_the_candidate_list(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let addressless = HyprClient {
+            address: None,
+            ..client_with_focus_history("unused", Some(5))
+        };
+        let clients = vec![client_with_focus_history("0xrecent", Some(2)), addressless];
+
+        let workspace = resolve_workspace_from_pid_chain(4682, &clients).ok_or("no workspace")?;
+
+        assert_eq!(workspace.client_addresses, ["0xrecent"]);
+        Ok(())
     }
 
     fn picked_address(clients: &[HyprClient]) -> Option<String> {
