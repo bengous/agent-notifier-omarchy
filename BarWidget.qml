@@ -21,6 +21,8 @@ BarWidget {
 
   function close() { popupOpen = false }
 
+  onPopupOpenChanged: if (popupOpen) refresh()
+
   readonly property int unreadCount: {
     var count = 0
     for (var i = 0; i < events.length; i++)
@@ -297,16 +299,27 @@ BarWidget {
         section.property: "displayProject"
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-        section.delegate: Text {
+        section.delegate: Column {
           width: ListView.view.width
-          topPadding: Style.space(4)
-          leftPadding: Style.spacing.rowPaddingX
-          rightPadding: Style.spacing.rowPaddingX
-          text: section
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          elide: Text.ElideRight
+
+          Rectangle {
+            width: parent.width
+            height: 1
+            color: root.dim
+            opacity: 0.3
+          }
+
+          Text {
+            width: parent.width
+            topPadding: Style.space(4)
+            leftPadding: Style.spacing.rowPaddingX
+            rightPadding: Style.spacing.rowPaddingX
+            text: section
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            elide: Text.ElideRight
+          }
         }
 
         delegate: Rectangle {
