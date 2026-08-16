@@ -165,6 +165,18 @@ commands and extra arguments exit 2.
 An event is visible only while its source window still exists. Completions from
 the already-focused window are dropped: you are looking at them.
 
+A single-process terminal, such as ghostty with `--gtk-single-instance`, gives
+every window one pid. The source window is therefore not knowable from the pid
+alone, so an event stores three things:
+
+- `clientAddress`, the best guess, and `clientAddresses`, every window that can
+  be the source, ranked. A click tries them in order.
+- `sourceProcess`, the pid and start time of the window's own shell. The event
+  dies with that window, not with the whole terminal application.
+
+A click that lands on the best guess marks the event read. A click that falls
+back to another window leaves it unread: the source was not reached.
+
 ## State
 
 ```text
