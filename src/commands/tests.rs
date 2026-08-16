@@ -26,6 +26,7 @@ fn base_event() -> AgentEvent {
             client_pid: 300,
             client_address: None,
             client_addresses: Vec::new(),
+            source_process: None,
             title: "dotfiles | main".to_owned(),
             extra: serde_json::Map::new(),
         }),
@@ -389,6 +390,7 @@ fn appends_newest_first_and_trims() {
                         client_pid: i64::from(index),
                         client_address: None,
                         client_addresses: Vec::new(),
+                        source_process: None,
                         title: "dotfiles | main".to_owned(),
                         extra: serde_json::Map::new(),
                     })
@@ -783,6 +785,73 @@ fn includes_only_events_matching_live_hyprland_addresses() {
         Some("live-window")
     );
     assert_eq!(status_output(&focusable).text, "agents 󰂚 1");
+}
+
+fn event_with_source_process(id: &str, process: state::ProcessRef) -> AgentEvent {
+    let mut base = event_with_address(id, 4682, "0xguess");
+    if let Some(workspace) = &mut base.workspace {
+        workspace.source_process = Some(process);
+    }
+    base
+}
+
+fn own_process_ref() -> Result<state::ProcessRef, Box<dyn std::error::Error>> {
+    crate::hyprland::process_ref(i64::from(std::process::id()))
+        .ok_or_else(|| "no process ref for the test process".into())
+}
+
+#[test]
+fn an_event_with_a_live_source_process_stays_focusable_without_live_addresses(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let event = event_with_source_process("session-alive", own_process_ref()?);
+
+    let focusable = focusable_events_for_addresses(&[event], &HashSet::new());
+
+    assert_eq!(focusable.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn an_event_with_a_dead_source_process_is_pruned_despite_live_candidates(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let own = own_process_ref()?;
+    let dead = state::ProcessRef {
+        start_time: own.start_time.wrapping_add(1),
+        ..own
+    };
+    let state = state_of(vec![event_with_source_process("session-dead", dead)]);
+    let active = HashSet::from(["0xguess".to_owned()]);
+
+    assert!(prune_stale_events(state, &active).events.is_empty());
+    Ok(())
+}
+
+#[test]
+fn a_source_process_serializes_additively() -> Result<(), Box<dyn std::error::Error>> {
+    let legacy_json = serde_json::to_string(&event_with_address("legacy", 1, "0xbeef"))?;
+    assert!(!legacy_json.contains("sourceProcess"));
+
+    let process = state::ProcessRef {
+        pid: 146_082,
+        start_time: 737_679,
+    };
+    let value = serde_json::to_value(event_with_source_process("anchored", process))?;
+    assert_eq!(value["workspace"]["sourceProcess"]["pid"], 146_082);
+    assert_eq!(value["workspace"]["sourceProcess"]["startTime"], 737_679);
+
+    let raw = serde_json::to_string(&state_of(vec![event_with_source_process(
+        "anchored", process,
+    )]))?;
+    let parsed = parse_state(&raw)?;
+    assert_eq!(
+        parsed
+            .events
+            .first()
+            .and_then(|event| event.workspace.as_ref())
+            .and_then(|workspace| workspace.source_process),
+        Some(process)
+    );
+    Ok(())
 }
 
 #[test]

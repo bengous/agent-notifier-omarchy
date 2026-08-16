@@ -61,13 +61,20 @@ fn focusable_events_for_addresses(
     dedupe_events(focusable)
 }
 
+/// The source process is the per-window death signal: closing the window kills
+/// its shell even when the terminal shares one pid across windows. Events
+/// without one (legacy state) fall back to window-address liveness.
 fn event_has_live_source(event: &AgentEvent, active: &HashSet<String>) -> bool {
-    event.workspace.as_ref().is_some_and(|workspace| {
-        workspace
-            .candidate_addresses()
-            .iter()
-            .any(|address| active.contains(*address))
-    })
+    event
+        .workspace
+        .as_ref()
+        .is_some_and(|workspace| match &workspace.source_process {
+            Some(process) => hyprland::process_is_alive(process),
+            None => workspace
+                .candidate_addresses()
+                .iter()
+                .any(|address| active.contains(*address)),
+        })
 }
 
 fn focused_the_primary_window(event: &AgentEvent, focused: &str) -> bool {

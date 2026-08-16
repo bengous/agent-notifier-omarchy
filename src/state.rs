@@ -9,6 +9,15 @@ pub(crate) enum EventStatus {
     Read,
 }
 
+/// `start_time` (jiffies since boot, from `/proc/<pid>/stat`) makes the
+/// reference immune to pid recycling.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct ProcessRef {
+    pub(crate) pid: i64,
+    #[serde(rename = "startTime")]
+    pub(crate) start_time: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct WorkspaceInfo {
     pub(crate) id: i64,
@@ -31,6 +40,14 @@ pub(crate) struct WorkspaceInfo {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub(crate) client_addresses: Vec<String>,
+    /// The window's own shell in the hook's process chain: the per-window
+    /// liveness anchor a shared-pid terminal cannot provide.
+    #[serde(
+        default,
+        rename = "sourceProcess",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) source_process: Option<ProcessRef>,
     pub(crate) title: String,
     /// Keeps keys written by a newer binary alive across a rewrite by this one.
     /// This only covers additive-key schema evolution: a new `EventStatus`

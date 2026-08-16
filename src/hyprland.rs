@@ -7,7 +7,7 @@ use std::io;
 use std::path::PathBuf;
 
 use crate::process::command_output;
-use crate::state::{AgentEvent, WorkspaceInfo};
+use crate::state::{AgentEvent, ProcessRef, WorkspaceInfo};
 
 #[derive(Debug, Clone, Deserialize)]
 struct HyprWorkspace {
@@ -161,6 +161,7 @@ fn hypr_client_to_workspace(client: &HyprClient) -> Option<WorkspaceInfo> {
         client_pid: pid,
         client_address: client.address.clone(),
         client_addresses: Vec::new(),
+        source_process: None,
         title: client.title.clone().unwrap_or_default(),
         extra: serde_json::Map::new(),
     })
@@ -206,6 +207,7 @@ fn resolve_workspace_from_pid_chain(
 ) -> Option<WorkspaceInfo> {
     let by_pid = clients_by_pid(clients);
     let mut seen = HashSet::new();
+    let mut previous = None;
     for pid in pid_chain(start_pid, 80) {
         if !seen.insert(pid) {
             break;
@@ -216,11 +218,34 @@ fn resolve_workspace_from_pid_chain(
                 if workspace.client_address.is_some() {
                     workspace.client_addresses = ranked_addresses(candidates);
                 }
+                workspace.source_process = previous.and_then(process_ref);
                 Some(workspace)
             });
         }
+        previous = Some(pid);
     }
     None
+}
+
+pub(crate) fn process_ref(pid: i64) -> Option<ProcessRef> {
+    Some(ProcessRef {
+        pid,
+        start_time: read_proc_start_time(pid)?,
+    })
+}
+
+pub(crate) fn process_is_alive(process: &ProcessRef) -> bool {
+    read_proc_start_time(process.pid) == Some(process.start_time)
+}
+
+fn read_proc_start_time(pid: i64) -> Option<u64> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let close_paren = stat.rfind(')')?;
+    stat[close_paren + 2..]
+        .split_whitespace()
+        .nth(19)?
+        .parse()
+        .ok()
 }
 
 fn read_proc_parent_pid(pid: i64) -> Option<i64> {
@@ -307,6 +332,49 @@ mod tests {
             }),
             focus_history_id,
         }
+    }
+
+    #[test]
+    fn a_process_ref_tracks_liveness_through_proc() -> Result<(), Box<dyn std::error::Error>> {
+        let own_pid = i64::from(std::process::id());
+        let own = process_ref(own_pid).ok_or("no process ref for the test process")?;
+
+        assert!(process_is_alive(&own));
+        assert!(!process_is_alive(&ProcessRef {
+            start_time: own.start_time.wrapping_add(1),
+            ..own
+        }));
+        assert_eq!(process_ref(999_999_999), None);
+        Ok(())
+    }
+
+    #[test]
+    fn captures_the_window_shell_as_the_source_process() -> Result<(), Box<dyn std::error::Error>> {
+        let own_pid = i64::from(std::process::id());
+        let parent_pid = read_proc_parent_pid(own_pid).ok_or("no parent pid")?;
+        let clients = vec![HyprClient {
+            pid: Some(parent_pid),
+            ..client_with_focus_history("0xshell", Some(2))
+        }];
+
+        let workspace =
+            resolve_workspace_from_pid_chain(own_pid, &clients).ok_or("no workspace")?;
+        let source = workspace.source_process.ok_or("no source process")?;
+
+        assert_eq!(source.pid, own_pid);
+        assert!(process_is_alive(&source));
+        Ok(())
+    }
+
+    #[test]
+    fn a_window_that_is_its_own_hook_parent_gets_no_source_process(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let clients = vec![client_with_focus_history("0xdirect", Some(2))];
+
+        let workspace = resolve_workspace_from_pid_chain(4682, &clients).ok_or("no workspace")?;
+
+        assert_eq!(workspace.source_process, None);
+        Ok(())
     }
 
     #[test]
