@@ -17,6 +17,7 @@ BarWidget {
   property bool popupOpen: false
   property bool refreshQueued: false
   property var pendingCommands: []
+  property real nowMs: Date.now()
 
   function close() { popupOpen = false }
 
@@ -27,14 +28,14 @@ BarWidget {
     return count
   }
 
-  // The lines agent-notifier itself prints as its tooltip: one unread
-  // completion per line, the same order the state file keeps them in.
+  // One unread completion per line, the same order the state file keeps
+  // them in.
   readonly property string tooltipLines: {
     var lines = []
     for (var i = 0; i < events.length; i++) {
       var event = events[i]
       if (String(event.status) !== "unread") continue
-      lines.push(String(event.displayLabel || "") + " " + String(event.displayCreatedAt || ""))
+      lines.push(String(event.displayLabel || "") + " " + root.absoluteTime(event.createdAt))
     }
     return lines.length === 0 ? "No agent completions" : lines.join("\n")
   }
@@ -59,6 +60,27 @@ BarWidget {
     if (name === "codex")
       return Qt.resolvedUrl(Color.background.hslLightness >= 0.5 ? "assets/codex-light.svg" : "assets/codex.svg")
     return ""
+  }
+
+  function relativeTime(createdAt, nowMs) {
+    var moment = new Date(String(createdAt || ""))
+    if (isNaN(moment.getTime())) return String(createdAt || "")
+    var minutes = Math.floor((nowMs - moment.getTime()) / 60000)
+    if (minutes < 1) return "just now"
+    if (minutes < 60) return minutes + " min ago"
+    return root.absoluteTime(createdAt)
+  }
+
+  function absoluteTime(createdAt) {
+    var moment = new Date(String(createdAt || ""))
+    if (isNaN(moment.getTime())) return String(createdAt || "")
+    var now = new Date()
+    var startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    var startOfDay = new Date(moment.getFullYear(), moment.getMonth(), moment.getDate())
+    var days = Math.round((startOfToday.getTime() - startOfDay.getTime()) / 86400000)
+    if (days < 1) return Qt.formatDateTime(moment, "HH:mm")
+    if (days < 6) return Qt.formatDateTime(moment, "ddd HH:mm")
+    return Qt.formatDateTime(moment, "MMM d HH:mm")
   }
 
   function refresh() {
@@ -122,6 +144,14 @@ BarWidget {
     function open(): void { root.popupOpen = true }
     function close(): void { root.close() }
     function toggle(): void { root.popupOpen = !root.popupOpen }
+  }
+
+  Timer {
+    running: root.popupOpen
+    interval: 30000
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.nowMs = Date.now()
   }
 
   FileView {
@@ -340,7 +370,7 @@ BarWidget {
 
               Text {
                 width: metaRow.width - agentMark.width - metaRow.spacing
-                text: String(eventRow.modelData.displayCreatedAt || "")
+                text: root.relativeTime(eventRow.modelData.createdAt, root.nowMs)
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
@@ -376,27 +406,36 @@ BarWidget {
 
       RowLayout {
         Layout.fillWidth: true
-        spacing: Style.spacing.md
+        spacing: Style.spacing.sm
+
+        Text {
+          Layout.fillWidth: true
+          text: "Click a row to focus its session"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideRight
+        }
 
         Button {
-          Layout.fillWidth: true
+          id: clearRead
           text: "Clear read"
-          bordered: true
-          foreground: root.foreground
+          foreground: clearRead.hot ? root.foreground : root.dim
           fontFamily: root.fontFamily
-          fontSize: Style.font.bodySmall
-          verticalPadding: Style.spacing.controlPaddingY
+          fontSize: Style.font.caption
+          horizontalPadding: Style.space(5)
+          verticalPadding: Style.space(3)
           onClicked: root.enqueue(["clear-read"])
         }
 
         Button {
-          Layout.fillWidth: true
+          id: clearAll
           text: "Clear all"
-          bordered: true
-          foreground: root.foreground
+          foreground: clearAll.hot ? root.foreground : root.dim
           fontFamily: root.fontFamily
-          fontSize: Style.font.bodySmall
-          verticalPadding: Style.spacing.controlPaddingY
+          fontSize: Style.font.caption
+          horizontalPadding: Style.space(5)
+          verticalPadding: Style.space(3)
           onClicked: root.enqueue(["clear-all"])
         }
       }
