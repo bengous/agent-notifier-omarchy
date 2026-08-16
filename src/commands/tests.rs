@@ -26,6 +26,7 @@ fn base_event() -> AgentEvent {
             client_pid: 300,
             client_address: None,
             title: "dotfiles | main".to_owned(),
+            extra: serde_json::Map::new(),
         }),
         DateTime::from_timestamp_millis(1_778_061_600_000).unwrap_or_else(Utc::now),
         "abcd",
@@ -119,6 +120,13 @@ fn workspace(event: &AgentEvent) -> Result<WorkspaceInfo, Box<dyn std::error::Er
         .workspace
         .clone()
         .ok_or_else(|| "missing workspace".into())
+}
+
+fn state_of(events: Vec<AgentEvent>) -> AgentNotifierState {
+    AgentNotifierState {
+        events,
+        ..empty_state()
+    }
 }
 
 #[test]
@@ -368,6 +376,7 @@ fn appends_newest_first_and_trims() {
                         client_pid: i64::from(index),
                         client_address: None,
                         title: "dotfiles | main".to_owned(),
+                        extra: serde_json::Map::new(),
                     })
                 }),
                 ..base_event()
@@ -387,10 +396,7 @@ fn appends_newest_first_and_trims() {
 
 #[test]
 fn dedupes_sessionless_events_by_session() {
-    let state = AgentNotifierState {
-        version: 1,
-        events: vec![sessionless_event("old", "session-1")],
-    };
+    let state = state_of(vec![sessionless_event("old", "session-1")]);
     let state = append_and_trim(state, sessionless_event("new", "session-1"));
 
     assert_eq!(state.events.len(), 1);
@@ -402,10 +408,7 @@ fn dedupes_sessionless_events_by_session() {
 
 #[test]
 fn two_sessions_in_one_window_stay_separate() {
-    let state = AgentNotifierState {
-        version: 1,
-        events: vec![event_with_session("old", "session-1")],
-    };
+    let state = state_of(vec![event_with_session("old", "session-1")]);
     let state = append_and_trim(state, event_with_session("new", "session-2"));
 
     assert_eq!(state.events.len(), 2);
@@ -421,10 +424,7 @@ fn two_sessions_sharing_one_terminal_pid_stay_separate() {
         session_id: "session-2".to_owned(),
         ..event_with_address("second", 4682, "0x55e2cd756b00")
     };
-    let state = AgentNotifierState {
-        version: 1,
-        events: vec![first],
-    };
+    let state = state_of(vec![first]);
     let state = append_and_trim(state, second);
 
     assert_eq!(state.events.len(), 2);
@@ -437,10 +437,7 @@ fn one_session_moved_to_another_window_merges_into_the_newest() {
     if let Some(workspace) = &mut second.workspace {
         workspace.client_pid = 301;
     }
-    let state = AgentNotifierState {
-        version: 1,
-        events: vec![event_with_session("first", "session-1")],
-    };
+    let state = state_of(vec![event_with_session("first", "session-1")]);
     let state = append_and_trim(state, second);
 
     assert_eq!(state.events.len(), 1);
@@ -452,19 +449,16 @@ fn one_session_moved_to_another_window_merges_into_the_newest() {
 
 #[test]
 fn keeps_unknown_session_events_separate() {
-    let state = AgentNotifierState {
-        version: 1,
-        events: vec![
-            AgentEvent {
-                workspace: None,
-                ..event_with_session("first", "unknown")
-            },
-            AgentEvent {
-                workspace: None,
-                ..event_with_session("second", "unknown")
-            },
-        ],
-    };
+    let state = state_of(vec![
+        AgentEvent {
+            workspace: None,
+            ..event_with_session("first", "unknown")
+        },
+        AgentEvent {
+            workspace: None,
+            ..event_with_session("second", "unknown")
+        },
+    ]);
 
     assert_eq!(dedupe_events(state.events).len(), 2);
 }
@@ -568,10 +562,7 @@ fn counts_unread_events_in_status_label() {
         status: EventStatus::Read,
         ..event.clone()
     };
-    let state = AgentNotifierState {
-        version: 1,
-        events: vec![event.clone(), read, other],
-    };
+    let state = state_of(vec![event.clone(), read, other]);
     let output = status_output(&dedupe_events(state.events));
     assert_eq!(output.text, "agents 󰂚 2");
     assert_eq!(output.class, "unread");
@@ -579,13 +570,10 @@ fn counts_unread_events_in_status_label() {
 
 #[test]
 fn marking_duplicate_session_read_updates_all_copies() {
-    let state = AgentNotifierState {
-        version: 1,
-        events: vec![
-            sessionless_event("new", "session-1"),
-            sessionless_event("old", "session-1"),
-        ],
-    };
+    let state = state_of(vec![
+        sessionless_event("new", "session-1"),
+        sessionless_event("old", "session-1"),
+    ]);
     let state = set_event_status(state, "new", EventStatus::Read);
 
     assert!(state
@@ -597,13 +585,10 @@ fn marking_duplicate_session_read_updates_all_copies() {
 
 #[test]
 fn marking_window_address_read_updates_counter() {
-    let state = AgentNotifierState {
-        version: 1,
-        events: vec![
-            event_with_address("focused", 1, "0xfocused"),
-            event_with_address("other", 2, "0xother"),
-        ],
-    };
+    let state = state_of(vec![
+        event_with_address("focused", 1, "0xfocused"),
+        event_with_address("other", 2, "0xother"),
+    ]);
     let state = set_window_address_read(state, "0xfocused");
 
     assert_eq!(
@@ -629,17 +614,14 @@ fn captures_only_events_with_source_addresses() {
 
 #[test]
 fn emits_status_json_shape() -> Result<(), Box<dyn std::error::Error>> {
-    let state = AgentNotifierState {
-        version: 1,
-        events: vec![AgentEvent {
-            project_name: "quote\"project".to_owned(),
-            workspace: Some(WorkspaceInfo {
-                title: "line\nbreak".to_owned(),
-                ..workspace(&base_event())?
-            }),
-            ..base_event()
-        }],
-    };
+    let state = state_of(vec![AgentEvent {
+        project_name: "quote\"project".to_owned(),
+        workspace: Some(WorkspaceInfo {
+            title: "line\nbreak".to_owned(),
+            ..workspace(&base_event())?
+        }),
+        ..base_event()
+    }]);
     let output = status_output(&dedupe_events(state.events));
     assert_eq!(output.text, "agents 󰂚 1");
     assert_eq!(output.tooltip, "line\nbreak May 6, 2026 10:00 AM UTC");
@@ -791,17 +773,14 @@ fn includes_only_events_matching_live_hyprland_addresses() {
 
 #[test]
 fn prunes_events_without_live_hyprland_addresses() {
-    let state = AgentNotifierState {
-        version: 1,
-        events: vec![
-            event_with_address("live-window", 42, "0xlive"),
-            event_with_address("stale-window", 7, "0xstale"),
-            AgentEvent {
-                workspace: None,
-                ..event_with_session("session-only", "session-only")
-            },
-        ],
-    };
+    let state = state_of(vec![
+        event_with_address("live-window", 42, "0xlive"),
+        event_with_address("stale-window", 7, "0xstale"),
+        AgentEvent {
+            workspace: None,
+            ..event_with_session("session-only", "session-only")
+        },
+    ]);
     let active_addresses = HashSet::from(["0xlive".to_owned()]);
 
     let pruned = prune_stale_events(state, &active_addresses);

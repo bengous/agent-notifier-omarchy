@@ -9,7 +9,7 @@ pub(crate) enum EventStatus {
     Read,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct WorkspaceInfo {
     pub(crate) id: i64,
     pub(crate) name: String,
@@ -23,9 +23,16 @@ pub(crate) struct WorkspaceInfo {
     )]
     pub(crate) client_address: Option<String>,
     pub(crate) title: String,
+    /// Keeps keys written by a newer binary alive across a rewrite by this one.
+    /// This only covers additive-key schema evolution: a new `EventStatus`
+    /// variant, a changed type, or a `version` bump still makes an old binary
+    /// quarantine the file. No `i128`/`u128` fields anywhere in the state:
+    /// serde's flatten buffering does not carry them.
+    #[serde(flatten)]
+    pub(crate) extra: serde_json::Map<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct AgentEvent {
     pub(crate) id: String,
     pub(crate) agent: String,
@@ -59,18 +66,23 @@ pub(crate) struct AgentEvent {
     pub(crate) created_at: String,
     pub(crate) workspace: Option<WorkspaceInfo>,
     pub(crate) status: EventStatus,
+    #[serde(flatten)]
+    pub(crate) extra: serde_json::Map<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct AgentNotifierState {
     pub(crate) version: u8,
     pub(crate) events: Vec<AgentEvent>,
+    #[serde(flatten)]
+    pub(crate) extra: serde_json::Map<String, serde_json::Value>,
 }
 
 pub(crate) fn empty_state() -> AgentNotifierState {
     AgentNotifierState {
         version: 1,
         events: Vec::new(),
+        extra: serde_json::Map::new(),
     }
 }
 

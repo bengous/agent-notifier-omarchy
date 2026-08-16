@@ -179,6 +179,12 @@ kept.
 `events.json` is an internal format. Read the state through `status-json` and
 `list-display-json` instead.
 
+Since v0.3.0 a rewrite keeps JSON keys the binary does not know, so a newer
+binary's fields survive rewrites by this one. Binaries up to v0.2.0 still drop
+those keys on every rewrite. After an upgrade, restart every old process —
+above all the `watch-active-window` daemon — or recent fields are lost again
+until the restart.
+
 ## Dependencies
 
 | Dependency | Requirement | Behaviour when missing |

@@ -159,7 +159,36 @@ fn current_millis() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::{set_event_status, EventStatus};
     use tempfile::tempdir;
+
+    #[test]
+    fn keeps_unknown_fields_across_state_rewrites() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
+        let path = dir.path().join("events.json");
+        let raw = r#"{"version":1,"rootExtra":"root-kept","events":[{"id":"e","agent":"claude",
+            "kind":"main","projectName":"p","projectPath":"/repo/dotfiles","cwd":"/repo/dotfiles",
+            "sessionId":"s","createdAt":"2026-07-26T08:00:00.000Z",
+            "workspace":{"id":1,"name":"1","monitor":"DP-3","clientPid":42,"title":"t",
+                "workspaceExtra":"workspace-kept"},
+            "status":"unread","eventExtra":"event-kept"}]}"#;
+        fs::write(&path, raw)?;
+        let now = DateTime::from_timestamp_millis(0).unwrap_or_else(Utc::now);
+
+        with_state_update(&path, now, |state| {
+            set_event_status(state, "e", EventStatus::Read)
+        })?;
+
+        let value: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path)?)?;
+        assert_eq!(value["events"][0]["status"], "read");
+        assert_eq!(value["rootExtra"], "root-kept");
+        assert_eq!(value["events"][0]["eventExtra"], "event-kept");
+        assert_eq!(
+            value["events"][0]["workspace"]["workspaceExtra"],
+            "workspace-kept"
+        );
+        Ok(())
+    }
 
     #[test]
     fn skips_the_write_when_the_update_changes_nothing() -> Result<(), Box<dyn std::error::Error>> {

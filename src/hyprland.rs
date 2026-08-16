@@ -160,6 +160,7 @@ fn hypr_client_to_workspace(client: &HyprClient) -> Option<WorkspaceInfo> {
         client_pid: pid,
         client_address: client.address.clone(),
         title: client.title.clone().unwrap_or_default(),
+        extra: serde_json::Map::new(),
     })
 }
 

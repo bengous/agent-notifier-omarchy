@@ -6,7 +6,7 @@ use std::path::Path;
 
 use crate::state::{dedupe_events, AgentEvent, EventStatus};
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub(crate) struct DisplayAgentEvent {
     #[serde(flatten)]
     pub(crate) event: AgentEvent,
@@ -18,7 +18,7 @@ pub(crate) struct DisplayAgentEvent {
     pub(crate) display_project: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub(crate) struct DisplayState {
     pub(crate) version: u8,
     pub(crate) events: Vec<DisplayAgentEvent>,

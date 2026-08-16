@@ -69,5 +69,6 @@ pub(crate) fn build_pi_event(
         created_at: now.to_rfc3339_opts(SecondsFormat::Millis, true),
         workspace,
         status: EventStatus::Unread,
+        extra: serde_json::Map::new(),
     }
 }
