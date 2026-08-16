@@ -9,10 +9,6 @@ use std::thread;
 use std::time::Duration;
 
 use crate::cli::CliCommand;
-use crate::codex_event::{
-    build_stop_event, current_git_branch, parse_stop_hook_input, project_root, random_hex,
-    repository_key, StopHookInput,
-};
 use crate::pi_event::{build_pi_event, parse_pi_hook_input};
 use crate::presentation::{display_state_from_events, event_label, status_output, StatusOutput};
 use crate::process::{run_command, run_command_owned, DEFAULT_TIMEOUT};
@@ -20,6 +16,10 @@ use crate::state::{
     append_and_trim, clear_read_events, dedupe_events, empty_state, set_event_status,
     set_window_address_read, state_has_unread_for_address, AgentEvent, AgentNotifierState,
     EventStatus, WorkspaceInfo,
+};
+use crate::stop_event::{
+    build_stop_event, current_git_branch, parse_stop_hook_input, project_root, random_hex,
+    repository_key, StopHookInput,
 };
 use crate::storage::{read_state_or_recover, state_path, with_state_update};
 use crate::{hyprland, session_title};

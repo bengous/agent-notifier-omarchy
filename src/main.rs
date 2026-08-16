@@ -1,5 +1,4 @@
 mod cli;
-mod codex_event;
 mod commands;
 mod hyprland;
 mod pi_event;
@@ -7,6 +6,7 @@ mod presentation;
 mod process;
 mod session_title;
 mod state;
+mod stop_event;
 mod storage;
 
 use cli::CliCommand;
