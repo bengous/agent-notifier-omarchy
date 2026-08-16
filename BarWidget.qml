@@ -132,7 +132,6 @@ BarWidget {
     var id = String(event.id || "")
     if (id === "") return
     enqueue(["focus-id", id])
-    enqueue(["mark-read", id])
     close()
   }
 

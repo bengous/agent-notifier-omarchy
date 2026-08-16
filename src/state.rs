@@ -72,6 +72,26 @@ impl WorkspaceInfo {
     pub(crate) fn is_sole_candidate(&self, address: &str) -> bool {
         matches!(self.candidate_addresses().as_slice(), [only] if *only == address)
     }
+
+    pub(crate) fn focus_outcome(&self, focused: Option<&str>) -> FocusOutcome {
+        match focused {
+            Some(address) if self.client_address.as_deref() == Some(address) => {
+                FocusOutcome::Primary
+            }
+            Some(_) => FocusOutcome::Fallback,
+            None => FocusOutcome::NotFocused,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FocusOutcome {
+    /// The primary window took focus: the completion is acknowledged.
+    Primary,
+    /// A sibling candidate took focus: the source window was not reached, so
+    /// the completion stays unread.
+    Fallback,
+    NotFocused,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

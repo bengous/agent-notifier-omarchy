@@ -15,7 +15,7 @@ use crate::process::{run_command, run_command_owned, DEFAULT_TIMEOUT};
 use crate::state::{
     append_and_trim, clear_read_events, dedupe_events, empty_state, set_event_status,
     set_window_address_read, state_has_unread_for_address, AgentEvent, AgentNotifierState,
-    EventStatus, WorkspaceInfo,
+    EventStatus, FocusOutcome, WorkspaceInfo,
 };
 use crate::stop_event::{
     build_stop_event, current_git_branch, parse_stop_hook_input, project_root, random_hex,
@@ -75,14 +75,6 @@ fn event_has_live_source(event: &AgentEvent, active: &HashSet<String>) -> bool {
                 .iter()
                 .any(|address| active.contains(*address)),
         })
-}
-
-fn focused_the_primary_window(event: &AgentEvent, focused: &str) -> bool {
-    event
-        .workspace
-        .as_ref()
-        .and_then(|workspace| workspace.client_address.as_deref())
-        == Some(focused)
 }
 
 fn prune_stale_events(
@@ -445,13 +437,8 @@ pub(crate) fn run() -> io::Result<i32> {
             let event = focusable
                 .iter()
                 .find(|event| event.status == EventStatus::Unread);
-            if let Some(focused) = hyprland::focus_event_source(event) {
-                // A fallback focus leaves the event unread: the source window
-                // was not reached, so the completion is not acknowledged.
-                if let Some(id) = event
-                    .filter(|event| focused_the_primary_window(event, &focused))
-                    .map(|event| event.id.clone())
-                {
+            if hyprland::focus_event_source(event) == FocusOutcome::Primary {
+                if let Some(id) = event.map(|event| event.id.clone()) {
                     let _ = with_state_update(&state_path()?, Utc::now(), |state| {
                         set_event_status(state, &id, EventStatus::Read)
                     })?;
@@ -462,16 +449,19 @@ pub(crate) fn run() -> io::Result<i32> {
         CliCommand::FocusId(id) => {
             let state = read_state_or_recover(&state_path()?, Utc::now())?;
             let event = state.events.iter().find(|event| event.id == id);
-            let Some(focused) = hyprland::focus_event_source(event) else {
-                eprintln!("agent-notifier: could not focus the source window for {id}");
-                return Ok(1);
-            };
-            if event.is_some_and(|event| focused_the_primary_window(event, &focused)) {
-                let _ = with_state_update(&state_path()?, Utc::now(), |state| {
-                    set_event_status(state, &id, EventStatus::Read)
-                })?;
+            match hyprland::focus_event_source(event) {
+                FocusOutcome::NotFocused => {
+                    eprintln!("agent-notifier: could not focus the source window for {id}");
+                    Ok(1)
+                }
+                FocusOutcome::Primary => {
+                    let _ = with_state_update(&state_path()?, Utc::now(), |state| {
+                        set_event_status(state, &id, EventStatus::Read)
+                    })?;
+                    Ok(0)
+                }
+                FocusOutcome::Fallback => Ok(0),
             }
-            Ok(0)
         }
         CliCommand::MarkRead(id) => {
             let _ = with_state_update(&state_path()?, Utc::now(), |state| {

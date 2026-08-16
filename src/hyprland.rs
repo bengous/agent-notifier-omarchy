@@ -7,7 +7,7 @@ use std::io;
 use std::path::PathBuf;
 
 use crate::process::command_output;
-use crate::state::{AgentEvent, ProcessRef, WorkspaceInfo};
+use crate::state::{AgentEvent, FocusOutcome, ProcessRef, WorkspaceInfo};
 
 #[derive(Debug, Clone, Deserialize)]
 struct HyprWorkspace {
@@ -75,22 +75,20 @@ pub(crate) fn is_active_source_event(event: &AgentEvent) -> bool {
     active_window_address().is_some_and(|active| workspace.is_sole_candidate(&active))
 }
 
-/// Focus the first candidate window that still exists and return its address.
+/// Focus the first candidate window that still exists.
 ///
 /// There is deliberately no PID or workspace fallback beyond the stored
 /// candidates: a fallback that reports success while focusing a different
-/// window would consume the event in silence. Callers acknowledge the event
-/// only when the returned address is the primary one.
-pub(crate) fn focus_event_source(event: Option<&AgentEvent>) -> Option<String> {
-    let workspace = event.and_then(|event| event.workspace.as_ref())?;
-    workspace
-        .candidate_addresses()
-        .into_iter()
-        .find(|address| {
-            let target = format!("hl.dsp.focus({{ window = \"address:{address}\" }})");
-            dispatch_succeeded(command_output(["hyprctl", "dispatch", target.as_str()]).as_deref())
-        })
-        .map(str::to_owned)
+/// window would consume the event in silence.
+pub(crate) fn focus_event_source(event: Option<&AgentEvent>) -> FocusOutcome {
+    let Some(workspace) = event.and_then(|event| event.workspace.as_ref()) else {
+        return FocusOutcome::NotFocused;
+    };
+    let focused = workspace.candidate_addresses().into_iter().find(|address| {
+        let target = format!("hl.dsp.focus({{ window = \"address:{address}\" }})");
+        dispatch_succeeded(command_output(["hyprctl", "dispatch", target.as_str()]).as_deref())
+    });
+    workspace.focus_outcome(focused)
 }
 
 fn dispatch_succeeded(response: Option<&str>) -> bool {

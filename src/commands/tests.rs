@@ -875,11 +875,16 @@ fn an_event_with_no_live_candidate_is_pruned() {
 }
 
 #[test]
-fn a_fallback_focus_does_not_acknowledge_the_event() {
-    let event = event_with_candidates("guessed", 4682, &["0xguess", "0xother"]);
+fn a_fallback_focus_does_not_acknowledge_the_event() -> Result<(), Box<dyn std::error::Error>> {
+    let shared = workspace(&event_with_candidates("shared", 1, &["0xguess", "0xother"]))?;
 
-    assert!(focused_the_primary_window(&event, "0xguess"));
-    assert!(!focused_the_primary_window(&event, "0xother"));
+    assert_eq!(shared.focus_outcome(Some("0xguess")), FocusOutcome::Primary);
+    assert_eq!(
+        shared.focus_outcome(Some("0xother")),
+        FocusOutcome::Fallback
+    );
+    assert_eq!(shared.focus_outcome(None), FocusOutcome::NotFocused);
+    Ok(())
 }
 
 #[test]
