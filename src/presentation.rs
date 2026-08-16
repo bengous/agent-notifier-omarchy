@@ -29,7 +29,19 @@ pub(crate) struct StatusOutput {
 pub(crate) fn clean_workspace_title(title: &str) -> String {
     title
         .trim_start_matches(|character: char| {
-            character.is_whitespace() || matches!(character, '\u{2800}'..='\u{28ff}')
+            character.is_whitespace()
+                || matches!(character,
+                    '\u{2800}'..='\u{28ff}'
+                        | '\u{25d0}'..='\u{25d3}'
+                        | '\u{25dc}'..='\u{25e1}'
+                        | '\u{25f4}'..='\u{25f7}'
+                        | '\u{2722}'
+                        | '\u{2733}'
+                        | '\u{2736}'
+                        | '\u{273b}'
+                        | '\u{273d}'
+                        | '\u{2743}'
+                        | '\u{2749}')
         })
         .trim()
         .to_owned()
@@ -126,10 +138,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn strips_any_braille_spinner_glyph() {
+    fn strips_any_leading_spinner_glyph() {
         // U+28F8 is not in the historical blocklist.
         assert_eq!(clean_workspace_title("⣸ building"), "building");
         assert_eq!(clean_workspace_title("\u{28f8} building"), "building");
+        assert_eq!(clean_workspace_title("◑ building"), "building");
+        assert_eq!(clean_workspace_title("◜ building"), "building");
+        assert_eq!(clean_workspace_title("◷ building"), "building");
+        assert_eq!(clean_workspace_title("✻ building"), "building");
         assert_eq!(clean_workspace_title("  plain title  "), "plain title");
+        assert_eq!(clean_workspace_title("~/dotfiles"), "~/dotfiles");
     }
 }
