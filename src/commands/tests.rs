@@ -201,6 +201,44 @@ fn display_state_exposes_exactly_the_keys_the_widget_reads() {
 }
 
 #[test]
+fn version_json_exposes_exactly_the_keys_the_widget_reads() {
+    let info = presentation::build_info(
+        "agent-notifier",
+        "0.3.0",
+        "abc1234",
+        "true",
+        "2026-08-16T10:00:00+00:00",
+    );
+    let value = serde_json::to_value(&info).unwrap_or(serde_json::Value::Null);
+
+    for key in ["name", "version", "commit", "dirty", "commitDate"] {
+        assert!(!value[key].is_null(), "missing key: {key}");
+    }
+    assert_eq!(value["dirty"], serde_json::Value::Bool(true));
+}
+
+#[test]
+fn build_info_reports_dirty_only_when_the_tree_is_modified() {
+    let dirty = |flag: &str| presentation::build_info("n", "v", "c", flag, "d").dirty;
+
+    assert!(dirty("true"));
+    assert!(!dirty("false"));
+    assert!(!dirty(""));
+    assert!(!dirty("garbage"));
+
+    let fallback = presentation::build_info("n", "v", "unknown", "false", "unknown");
+    assert_eq!(fallback.commit, "unknown");
+    assert_eq!(fallback.commit_date, "unknown");
+}
+
+#[test]
+fn the_build_script_always_supplies_commit_metadata() {
+    assert!(!env!("AGENT_NOTIFIER_COMMIT").is_empty());
+    assert!(!env!("AGENT_NOTIFIER_DIRTY").is_empty());
+    assert!(!env!("AGENT_NOTIFIER_COMMIT_DATE").is_empty());
+}
+
+#[test]
 fn groups_events_by_project_with_the_newest_group_first() {
     let rows = displayed_projects(vec![
         event_in_project("alpha-new", 1, Some("/repo/alpha"), "/repo/alpha"),

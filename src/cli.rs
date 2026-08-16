@@ -8,6 +8,7 @@ pub(crate) enum CliCommand {
     StatusJson,
     ListJson,
     ListDisplayJson,
+    VersionJson,
     FocusLatest,
     FocusId(String),
     FocusIdMissing,
@@ -40,6 +41,7 @@ impl CliCommand {
             Some("status-json") => Self::StatusJson,
             Some("list-json") => Self::ListJson,
             Some("list-display-json") => Self::ListDisplayJson,
+            Some("version-json") => Self::VersionJson,
             Some("focus-latest") => Self::FocusLatest,
             Some("focus-id") => args.next().map_or(Self::FocusIdMissing, Self::FocusId),
             Some("mark-read") => args.next().map_or(Self::MarkReadMissing, Self::MarkRead),
@@ -71,6 +73,7 @@ mod tests {
         assert_eq!(parse(&["pi-hook"]), CliCommand::PiHook);
         assert_eq!(parse(&["claude-hook"]), CliCommand::ClaudeHook);
         assert_eq!(parse(&["status-json"]), CliCommand::StatusJson);
+        assert_eq!(parse(&["version-json"]), CliCommand::VersionJson);
         assert_eq!(parse(&["clear-all"]), CliCommand::ClearAll);
         assert_eq!(parse(&["prune-stale"]), CliCommand::PruneStale);
     }
@@ -97,6 +100,7 @@ mod tests {
     #[test]
     fn rejects_extra_arguments() {
         assert_eq!(parse(&["status-json", "extra"]), CliCommand::Unknown);
+        assert_eq!(parse(&["version-json", "extra"]), CliCommand::Unknown);
         assert_eq!(
             parse(&["focus-id", "event-1", "extra"]),
             CliCommand::Unknown

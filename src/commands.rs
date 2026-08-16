@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use crate::cli::CliCommand;
 use crate::pi_event::{build_pi_event, parse_pi_hook_input};
-use crate::presentation::{display_state_from_events, event_label, status_output, StatusOutput};
+use crate::presentation::{
+    build_info, display_state_from_events, event_label, status_output, BuildInfo, StatusOutput,
+};
 use crate::process::{run_command, run_command_owned, DEFAULT_TIMEOUT};
 use crate::state::{
     append_and_trim, clear_read_events, dedupe_events, empty_state, set_event_status,
@@ -373,6 +375,16 @@ fn print_json<T: Serialize>(value: &T) {
     }
 }
 
+fn crate_build_info() -> BuildInfo {
+    build_info(
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        env!("AGENT_NOTIFIER_COMMIT"),
+        env!("AGENT_NOTIFIER_DIRTY"),
+        env!("AGENT_NOTIFIER_COMMIT_DATE"),
+    )
+}
+
 fn unavailable_status_output() -> StatusOutput {
     StatusOutput {
         text: "agents !".to_owned(),
@@ -391,6 +403,7 @@ Commands:
   status-json              Print bar-widget status JSON
   list-json                Print raw state as JSON
   list-display-json        Print focusable events as display JSON
+  version-json             Print build metadata as JSON
   focus-latest             Focus the latest unread event
   focus-id <event-id>      Focus an event by id
   mark-read <event-id>     Mark an event as read
@@ -429,6 +442,10 @@ pub(crate) fn run() -> io::Result<i32> {
                 state.version,
                 focusable_events(&state.events),
             ));
+            Ok(0)
+        }
+        CliCommand::VersionJson => {
+            print_json(&crate_build_info());
             Ok(0)
         }
         CliCommand::FocusLatest => {

@@ -31,6 +31,32 @@ pub(crate) struct StatusOutput {
     pub(crate) class: String,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub(crate) struct BuildInfo {
+    pub(crate) name: String,
+    pub(crate) version: String,
+    pub(crate) commit: String,
+    pub(crate) dirty: bool,
+    #[serde(rename = "commitDate")]
+    pub(crate) commit_date: String,
+}
+
+pub(crate) fn build_info(
+    name: &str,
+    version: &str,
+    commit: &str,
+    dirty: &str,
+    commit_date: &str,
+) -> BuildInfo {
+    BuildInfo {
+        name: name.to_owned(),
+        version: version.to_owned(),
+        commit: commit.to_owned(),
+        dirty: dirty == "true",
+        commit_date: commit_date.to_owned(),
+    }
+}
+
 pub(crate) fn clean_workspace_title(title: &str) -> String {
     title
         .trim_start_matches(|character: char| {

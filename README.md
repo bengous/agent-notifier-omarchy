@@ -151,6 +151,7 @@ your shell `PATH`.
 | `status-json` | Print `{"text","tooltip","class"}` for the bar widget; `class` is `empty` or `unread` |
 | `list-display-json` | Print the focusable events the widget renders |
 | `list-json` | Print raw state |
+| `version-json` | Print build metadata: `{"name","version","commit","dirty","commitDate"}` |
 | `focus-latest` | Focus the latest unread event |
 | `focus-id <event-id>` | Focus one event and mark it read |
 | `mark-read <event-id>` | Mark one event read |
