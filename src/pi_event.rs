@@ -30,10 +30,12 @@ pub(crate) fn parse_pi_hook_input(raw: &str) -> PiHookInput {
     serde_json::from_str(raw).unwrap_or_default()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_pi_event(
     input: &PiHookInput,
     cwd: String,
     project_path: String,
+    project_key: String,
     branch_name: Option<String>,
     workspace: Option<WorkspaceInfo>,
     now: DateTime<Utc>,
@@ -50,6 +52,7 @@ pub(crate) fn build_pi_event(
         kind: "main".to_owned(),
         project_name,
         project_path,
+        project_key: Some(project_key),
         branch_name,
         cwd,
         session_id: input

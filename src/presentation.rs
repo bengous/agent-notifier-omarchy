@@ -1,5 +1,8 @@
 use chrono::DateTime;
 use serde::Serialize;
+use std::collections::HashMap;
+use std::ffi::OsStr;
+use std::path::Path;
 
 use crate::state::{dedupe_events, AgentEvent, EventStatus};
 
@@ -11,6 +14,8 @@ pub(crate) struct DisplayAgentEvent {
     pub(crate) display_label: String,
     #[serde(rename = "displayCreatedAt")]
     pub(crate) display_created_at: String,
+    #[serde(rename = "displayProject")]
+    pub(crate) display_project: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -127,14 +132,83 @@ pub(crate) fn status_output(events: &[AgentEvent]) -> StatusOutput {
     }
 }
 
+fn project_group_key(event: &AgentEvent) -> &str {
+    event
+        .project_key
+        .as_deref()
+        .filter(|key| !key.is_empty())
+        .unwrap_or(&event.project_path)
+}
+
+/// Newest-first input keeps every group ordered by its newest event.
+fn group_by_project(events: Vec<AgentEvent>) -> Vec<AgentEvent> {
+    let mut groups: Vec<(String, Vec<AgentEvent>)> = Vec::new();
+    for event in events {
+        let key = project_group_key(&event).to_owned();
+        match groups.iter_mut().find(|(existing, _)| *existing == key) {
+            Some((_, group)) => group.push(event),
+            None => groups.push((key, vec![event])),
+        }
+    }
+    groups.into_iter().flat_map(|(_, group)| group).collect()
+}
+
+fn project_key_name(key: &str, fallback: &str) -> String {
+    Path::new(key)
+        .file_name()
+        .and_then(OsStr::to_str)
+        .filter(|name| !name.is_empty())
+        .map_or_else(|| fallback.to_owned(), str::to_owned)
+}
+
+fn with_parent_directory(key: &str, name: &str) -> String {
+    Path::new(key)
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(OsStr::to_str)
+        .map_or_else(|| name.to_owned(), |parent| format!("{name} — {parent}"))
+}
+
+fn project_labels(events: &[AgentEvent]) -> HashMap<String, String> {
+    let mut named: Vec<(String, String)> = Vec::new();
+    for event in events {
+        let key = project_group_key(event);
+        if named.iter().any(|(existing, _)| existing.as_str() == key) {
+            continue;
+        }
+        named.push((key.to_owned(), project_key_name(key, &event.project_name)));
+    }
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for (_, name) in &named {
+        *counts.entry(name.clone()).or_default() += 1;
+    }
+    named
+        .into_iter()
+        .map(|(key, name)| {
+            let label = if counts.get(&name).is_some_and(|count| *count > 1) {
+                with_parent_directory(&key, &name)
+            } else {
+                name
+            };
+            (key, label)
+        })
+        .collect()
+}
+
 pub(crate) fn display_state_from_events(version: u8, events: Vec<AgentEvent>) -> DisplayState {
+    let grouped = group_by_project(dedupe_events(events));
+    let labels = project_labels(&grouped);
     DisplayState {
         version,
-        events: dedupe_events(events)
+        events: grouped
             .into_iter()
             .map(|event| DisplayAgentEvent {
                 display_label: event_label(&event),
                 display_created_at: format_created_at(&event.created_at),
+                display_project: labels
+                    .get(project_group_key(&event))
+                    .cloned()
+                    .unwrap_or_else(|| event.project_name.clone()),
                 event,
             })
             .collect(),

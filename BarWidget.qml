@@ -294,7 +294,20 @@ BarWidget {
         spacing: Style.space(4)
         model: root.events
         boundsBehavior: Flickable.StopAtBounds
+        section.property: "displayProject"
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+        section.delegate: Text {
+          width: ListView.view.width
+          topPadding: Style.space(4)
+          leftPadding: Style.spacing.rowPaddingX
+          rightPadding: Style.spacing.rowPaddingX
+          text: section
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideRight
+        }
 
         delegate: Rectangle {
           id: eventRow

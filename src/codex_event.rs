@@ -35,6 +35,34 @@ pub(crate) fn project_root(cwd: &str) -> String {
         .unwrap_or_else(|| cwd.to_owned())
 }
 
+/// Every worktree of one repository shares the main repository as its key.
+pub(crate) fn repository_key(cwd: &str, project_path: &str) -> String {
+    command_output([
+        "git",
+        "-C",
+        cwd,
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-common-dir",
+    ])
+    .as_deref()
+    .and_then(main_repository_root)
+    .unwrap_or_else(|| project_path.to_owned())
+}
+
+fn main_repository_root(git_common_dir: &str) -> Option<String> {
+    if git_common_dir.is_empty() {
+        return None;
+    }
+    let path = Path::new(git_common_dir);
+    if path.file_name() != Some(OsStr::new(".git")) {
+        return Some(git_common_dir.to_owned());
+    }
+    path.parent()
+        .map(|root| root.to_string_lossy().into_owned())
+        .filter(|root| !root.is_empty())
+}
+
 pub(crate) fn current_git_branch(cwd: &str) -> Option<String> {
     command_output(["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"])
         .filter(|branch| !branch.is_empty() && branch != "HEAD")
@@ -46,6 +74,7 @@ pub(crate) fn build_stop_event(
     input: &CodexStopInput,
     cwd: String,
     project_path: String,
+    project_key: String,
     branch_name: Option<String>,
     workspace: Option<WorkspaceInfo>,
     now: DateTime<Utc>,
@@ -62,6 +91,7 @@ pub(crate) fn build_stop_event(
         kind: "main".to_owned(),
         project_name,
         project_path,
+        project_key: Some(project_key),
         branch_name,
         cwd,
         session_id: input
@@ -100,4 +130,44 @@ fn current_millis() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_millis())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn a_worktree_common_dir_resolves_to_the_main_repository() {
+        assert_eq!(
+            main_repository_root("/repo/dotfiles/.git").as_deref(),
+            Some("/repo/dotfiles")
+        );
+    }
+
+    #[test]
+    fn a_bare_repository_path_stays_the_key() {
+        assert_eq!(
+            main_repository_root("/repo/dotfiles.git").as_deref(),
+            Some("/repo/dotfiles.git")
+        );
+    }
+
+    #[test]
+    fn a_git_directory_without_a_parent_yields_no_key() {
+        assert_eq!(main_repository_root(""), None);
+        assert_eq!(main_repository_root(".git"), None);
+    }
+
+    #[test]
+    fn outside_a_repository_the_key_is_the_project_path() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempdir()?;
+
+        assert_eq!(
+            repository_key(&dir.path().to_string_lossy(), "/repo/dotfiles"),
+            "/repo/dotfiles"
+        );
+        Ok(())
+    }
 }

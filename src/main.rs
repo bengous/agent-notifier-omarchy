@@ -21,7 +21,7 @@ mod storage;
 use cli::CliCommand;
 use codex_event::{
     build_stop_event, current_git_branch, parse_codex_stop_input, project_root, random_hex,
-    CodexStopInput,
+    repository_key, CodexStopInput,
 };
 use pi_event::{build_pi_event, parse_pi_hook_input};
 use presentation::{display_state_from_events, event_label, status_output, StatusOutput};
@@ -267,12 +267,14 @@ fn handle_hook(agent: &str) -> io::Result<()> {
     let cwd = input.cwd.clone().unwrap_or_else(fallback_cwd);
     let now = Utc::now();
     let project_path = project_root(&cwd);
+    let project_key = repository_key(&cwd, &project_path);
     let branch_name = current_git_branch(&project_path);
     let event = build_stop_event(
         agent,
         &input,
         cwd.clone(),
         project_path,
+        project_key,
         branch_name,
         resolve_source_workspace(),
         now,
@@ -293,11 +295,13 @@ fn handle_pi_hook() -> io::Result<()> {
     let cwd = input.cwd.clone().unwrap_or_else(fallback_cwd);
     let now = Utc::now();
     let project_path = project_root(&cwd);
+    let project_key = repository_key(&cwd, &project_path);
     let branch_name = current_git_branch(&project_path);
     let event = build_pi_event(
         &input,
         cwd.clone(),
         project_path,
+        project_key,
         branch_name,
         resolve_source_workspace(),
         now,
@@ -532,6 +536,7 @@ mod tests {
     use super::*;
     use crate::pi_event::PiHookInput;
     use crate::state::parse_state;
+    use std::ffi::OsStr;
     use std::fs;
     use tempfile::tempdir;
 
@@ -544,6 +549,7 @@ mod tests {
                 session_id_camel: None,
                 transcript_path: None,
             },
+            "/repo/dotfiles".to_owned(),
             "/repo/dotfiles".to_owned(),
             "/repo/dotfiles".to_owned(),
             Some("main".to_owned()),
@@ -573,6 +579,7 @@ mod tests {
                 leaf_id: None,
                 leaf_id_camel: Some("leaf-1".to_owned()),
             },
+            "/repo/dotfiles".to_owned(),
             "/repo/dotfiles".to_owned(),
             "/repo/dotfiles".to_owned(),
             Some("main".to_owned()),
@@ -621,6 +628,32 @@ mod tests {
         }
     }
 
+    fn event_in_project(
+        id: &str,
+        pid: i64,
+        project_key: Option<&str>,
+        project_path: &str,
+    ) -> AgentEvent {
+        AgentEvent {
+            project_key: project_key.map(str::to_owned),
+            project_name: Path::new(project_path)
+                .file_name()
+                .and_then(OsStr::to_str)
+                .unwrap_or(project_path)
+                .to_owned(),
+            project_path: project_path.to_owned(),
+            ..event_with_pid(id, pid)
+        }
+    }
+
+    fn displayed_projects(events: Vec<AgentEvent>) -> Vec<(String, String)> {
+        display_state_from_events(1, events)
+            .events
+            .into_iter()
+            .map(|row| (row.event.id, row.display_project))
+            .collect()
+    }
+
     fn workspace(event: &AgentEvent) -> Result<WorkspaceInfo, Box<dyn std::error::Error>> {
         event
             .workspace
@@ -656,6 +689,7 @@ mod tests {
         assert_eq!(event.agent, "codex");
         assert_eq!(event.kind, "main");
         assert_eq!(event.project_name, "dotfiles");
+        assert_eq!(event.project_key.as_deref(), Some("/repo/dotfiles"));
         assert_eq!(event.branch_name.as_deref(), Some("main"));
         assert_eq!(event.session_id, "session-1");
         assert_eq!(event.status, EventStatus::Unread);
@@ -675,12 +709,121 @@ mod tests {
             "createdAt",
             "displayLabel",
             "displayCreatedAt",
+            "displayProject",
             "workspace",
         ] {
             assert!(!event[key].is_null(), "missing key: {key}");
         }
         assert!(!value["version"].is_null());
         assert!(!event["workspace"]["name"].is_null());
+    }
+
+    #[test]
+    fn groups_events_by_project_with_the_newest_group_first() {
+        let rows = displayed_projects(vec![
+            event_in_project("alpha-new", 1, Some("/repo/alpha"), "/repo/alpha"),
+            event_in_project("beta", 2, Some("/repo/beta"), "/repo/beta"),
+            event_in_project("alpha-old", 3, Some("/repo/alpha"), "/repo/alpha"),
+        ]);
+
+        assert_eq!(
+            rows,
+            vec![
+                ("alpha-new".to_owned(), "alpha".to_owned()),
+                ("alpha-old".to_owned(), "alpha".to_owned()),
+                ("beta".to_owned(), "beta".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn two_worktrees_of_one_repository_share_the_main_repository_group() {
+        let rows = displayed_projects(vec![
+            event_in_project("worktree", 1, Some("/repo/alpha"), "/repo/alpha-feature"),
+            event_in_project("beta", 2, Some("/repo/beta"), "/repo/beta"),
+            event_in_project("main-worktree", 3, Some("/repo/alpha"), "/repo/alpha"),
+        ]);
+
+        assert_eq!(
+            rows,
+            vec![
+                ("worktree".to_owned(), "alpha".to_owned()),
+                ("main-worktree".to_owned(), "alpha".to_owned()),
+                ("beta".to_owned(), "beta".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn events_without_a_project_key_group_by_project_path() {
+        let rows = displayed_projects(vec![
+            event_in_project("alpha-new", 1, None, "/repo/alpha"),
+            event_in_project("beta", 2, None, "/repo/beta"),
+            event_in_project("alpha-old", 3, None, "/repo/alpha"),
+        ]);
+
+        assert_eq!(
+            rows,
+            vec![
+                ("alpha-new".to_owned(), "alpha".to_owned()),
+                ("alpha-old".to_owned(), "alpha".to_owned()),
+                ("beta".to_owned(), "beta".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn projects_sharing_a_directory_name_get_their_parent_directory() {
+        let rows = displayed_projects(vec![
+            event_in_project("work", 1, Some("/work/dotfiles"), "/work/dotfiles"),
+            event_in_project(
+                "personal",
+                2,
+                Some("/personal/dotfiles"),
+                "/personal/dotfiles",
+            ),
+            event_in_project("alpha", 3, Some("/work/alpha"), "/work/alpha"),
+        ]);
+
+        assert_eq!(
+            rows,
+            vec![
+                ("work".to_owned(), "dotfiles — work".to_owned()),
+                ("personal".to_owned(), "dotfiles — personal".to_owned()),
+                ("alpha".to_owned(), "alpha".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_keyless_project_label_falls_back_to_the_project_name() {
+        let rows = displayed_projects(vec![event_in_project(
+            "rootless",
+            1,
+            Some("/"),
+            "/repo/dotfiles",
+        )]);
+
+        assert_eq!(rows, vec![("rootless".to_owned(), "dotfiles".to_owned())]);
+    }
+
+    #[test]
+    fn parses_v1_state_without_a_project_key() -> Result<(), Box<dyn std::error::Error>> {
+        let raw = r#"{"version":1,"events":[{"id":"e","agent":"claude","kind":"main",
+            "projectName":"p","projectPath":"/repo/dotfiles","cwd":"/repo/dotfiles",
+            "sessionId":"s","createdAt":"2026-07-26T08:00:00.000Z",
+            "workspace":{"id":1,"name":"1","monitor":"DP-3","clientPid":42,"title":"t"},
+            "status":"unread"}]}"#;
+        let state = parse_state(raw)?;
+
+        assert_eq!(
+            state
+                .events
+                .first()
+                .and_then(|event| event.project_key.clone()),
+            None
+        );
+        Ok(())
     }
 
     #[test]
@@ -693,6 +836,7 @@ mod tests {
                 session_id_camel: None,
                 transcript_path: None,
             },
+            "/repo/dotfiles".to_owned(),
             "/repo/dotfiles".to_owned(),
             "/repo/dotfiles".to_owned(),
             Some("main".to_owned()),

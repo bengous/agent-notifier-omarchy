@@ -36,6 +36,12 @@ pub(crate) struct AgentEvent {
     pub(crate) project_path: String,
     #[serde(
         default,
+        rename = "projectKey",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) project_key: Option<String>,
+    #[serde(
+        default,
         rename = "branchName",
         skip_serializing_if = "Option::is_none"
     )]
