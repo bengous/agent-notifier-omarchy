@@ -19,7 +19,7 @@ pub(crate) struct ProcessRef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub(crate) struct WorkspaceInfo {
+pub(crate) struct SourceWindow {
     pub(crate) id: i64,
     pub(crate) name: String,
     pub(crate) monitor: String,
@@ -58,7 +58,7 @@ pub(crate) struct WorkspaceInfo {
     pub(crate) extra: serde_json::Map<String, serde_json::Value>,
 }
 
-impl WorkspaceInfo {
+impl SourceWindow {
     /// Legacy states carry only the primary address.
     pub(crate) fn candidate_addresses(&self) -> Vec<&str> {
         if self.client_addresses.is_empty() {
@@ -86,10 +86,10 @@ impl WorkspaceInfo {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FocusOutcome {
-    /// The primary window took focus: the completion is acknowledged.
+    /// The primary window took focus: the event can be marked read.
     Primary,
     /// A sibling candidate took focus: the source window was not reached, so
-    /// the completion stays unread.
+    /// the event stays unread.
     Fallback,
     NotFocused,
 }
@@ -126,7 +126,7 @@ pub(crate) struct AgentEvent {
     pub(crate) session_title: Option<String>,
     #[serde(rename = "createdAt")]
     pub(crate) created_at: String,
-    pub(crate) workspace: Option<WorkspaceInfo>,
+    pub(crate) workspace: Option<SourceWindow>,
     pub(crate) status: EventStatus,
     #[serde(flatten)]
     pub(crate) extra: serde_json::Map<String, serde_json::Value>,

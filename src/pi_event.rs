@@ -4,7 +4,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::path::Path;
 
-use crate::state::{AgentEvent, EventStatus, WorkspaceInfo};
+use crate::state::{AgentEvent, EventStatus, SourceWindow};
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub(crate) struct PiHookInput {
@@ -37,7 +37,7 @@ pub(crate) fn build_pi_event(
     project_path: String,
     project_key: String,
     branch_name: Option<String>,
-    workspace: Option<WorkspaceInfo>,
+    workspace: Option<SourceWindow>,
     now: DateTime<Utc>,
     random_id: &str,
 ) -> AgentEvent {

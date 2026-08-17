@@ -9,7 +9,7 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::process::command_output;
-use crate::state::{AgentEvent, EventStatus, WorkspaceInfo};
+use crate::state::{AgentEvent, EventStatus, SourceWindow};
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub(crate) struct StopHookInput {
@@ -76,7 +76,7 @@ pub(crate) fn build_stop_event(
     project_path: String,
     project_key: String,
     branch_name: Option<String>,
-    workspace: Option<WorkspaceInfo>,
+    workspace: Option<SourceWindow>,
     now: DateTime<Utc>,
     random_id: &str,
 ) -> AgentEvent {

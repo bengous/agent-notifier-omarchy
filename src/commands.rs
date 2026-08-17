@@ -17,7 +17,7 @@ use crate::process::{run_command, run_command_owned, DEFAULT_TIMEOUT};
 use crate::state::{
     append_and_trim, clear_read_events, dedupe_events, empty_state, set_event_status,
     set_window_address_read, state_has_unread_for_address, AgentEvent, AgentNotifierState,
-    EventStatus, FocusOutcome, WorkspaceInfo,
+    EventStatus, FocusOutcome, SourceWindow,
 };
 use crate::stop_event::{
     build_stop_event, current_git_branch, parse_stop_hook_input, project_root, random_hex,
@@ -27,8 +27,8 @@ use crate::storage::{read_state_or_recover, state_path, with_state_update};
 use crate::{hyprland, session_title};
 use crate::{STATUS_ERROR_CLASS, UNAVAILABLE_STATUS_JSON, UNAVAILABLE_STATUS_TOOLTIP};
 
-fn set_active_window_read(state: AgentNotifierState) -> AgentNotifierState {
-    match hyprland::active_window_address() {
+fn set_focused_window_read(state: AgentNotifierState) -> AgentNotifierState {
+    match hyprland::focused_window_address() {
         Some(address) => set_window_address_read(state, &address),
         None => state,
     }
@@ -48,16 +48,16 @@ fn mark_address_read(address: &str, now: DateTime<Utc>) -> io::Result<bool> {
 }
 
 fn focusable_events(events: &[AgentEvent]) -> Vec<AgentEvent> {
-    focusable_events_for_addresses(events, &hyprland::active_window_addresses())
+    focusable_events_for_addresses(events, &hyprland::existing_window_addresses())
 }
 
 fn focusable_events_for_addresses(
     events: &[AgentEvent],
-    active: &HashSet<String>,
+    existing_addresses: &HashSet<String>,
 ) -> Vec<AgentEvent> {
     let focusable = events
         .iter()
-        .filter(|event| event_has_live_source(event, active))
+        .filter(|event| event_has_live_source(event, existing_addresses))
         .cloned()
         .collect::<Vec<_>>();
     dedupe_events(focusable)
@@ -66,7 +66,7 @@ fn focusable_events_for_addresses(
 /// The source process is the per-window death signal: closing the window kills
 /// its shell even when the terminal shares one pid across windows. Events
 /// without one (legacy state) fall back to window-address liveness.
-fn event_has_live_source(event: &AgentEvent, active: &HashSet<String>) -> bool {
+fn event_has_live_source(event: &AgentEvent, existing_addresses: &HashSet<String>) -> bool {
     event
         .workspace
         .as_ref()
@@ -75,31 +75,31 @@ fn event_has_live_source(event: &AgentEvent, active: &HashSet<String>) -> bool {
             None => workspace
                 .candidate_addresses()
                 .iter()
-                .any(|address| active.contains(*address)),
+                .any(|address| existing_addresses.contains(*address)),
         })
 }
 
 fn prune_stale_events(
     mut state: AgentNotifierState,
-    active_addresses: &HashSet<String>,
+    existing_addresses: &HashSet<String>,
 ) -> AgentNotifierState {
     state
         .events
-        .retain(|event| event_has_live_source(event, active_addresses));
+        .retain(|event| event_has_live_source(event, existing_addresses));
     state
 }
 
-fn read_state_with_active_window_read(now: DateTime<Utc>) -> io::Result<AgentNotifierState> {
+fn read_state_with_focused_window_read(now: DateTime<Utc>) -> io::Result<AgentNotifierState> {
     let path = state_path()?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let current = read_state_or_recover(&path, now)?;
-    let next = set_active_window_read(current.clone());
+    let next = set_focused_window_read(current.clone());
     if next == current {
         return Ok(current);
     }
-    with_state_update(&path, now, set_active_window_read)
+    with_state_update(&path, now, set_focused_window_read)
 }
 
 fn format_status(state: &AgentNotifierState) -> StatusOutput {
@@ -203,7 +203,7 @@ fn fallback_cwd() -> String {
 }
 
 fn capture_completion_event(event: &AgentEvent, now: DateTime<Utc>) -> io::Result<()> {
-    if hyprland::is_active_source_event(event) {
+    if hyprland::is_focused_source_event(event) {
         return Ok(());
     }
     if should_capture_event(event) {
@@ -227,18 +227,18 @@ fn capture_completion_event(event: &AgentEvent, now: DateTime<Utc>) -> io::Resul
     Ok(())
 }
 
-/// Resolve the source workspace, retrying once when the address is missing —
+/// Resolve the source window, retrying once when the address is missing —
 /// `hyprctl clients` can race a window that has just been mapped.
-fn resolve_source_workspace() -> Option<WorkspaceInfo> {
-    let first = hyprland::resolve_current_workspace();
+fn resolve_source_window() -> Option<SourceWindow> {
+    let first = hyprland::current_source_window();
     if first
         .as_ref()
-        .is_some_and(|workspace| workspace.client_address.is_some())
+        .is_some_and(|source_window| source_window.client_address.is_some())
     {
         return first;
     }
     thread::sleep(Duration::from_millis(100));
-    hyprland::resolve_current_workspace().or(first)
+    hyprland::current_source_window().or(first)
 }
 
 fn hook_session_id(event: &AgentEvent) -> Option<&str> {
@@ -273,7 +273,7 @@ fn handle_hook(agent: &str) -> io::Result<()> {
         project_path,
         project_key,
         branch_name,
-        resolve_source_workspace(),
+        resolve_source_window(),
         now,
         &random_hex(4),
     );
@@ -300,7 +300,7 @@ fn handle_pi_hook() -> io::Result<()> {
         project_path,
         project_key,
         branch_name,
-        resolve_source_workspace(),
+        resolve_source_window(),
         now,
         &random_hex(4),
     );
@@ -308,22 +308,22 @@ fn handle_pi_hook() -> io::Result<()> {
 }
 
 fn handle_status_json() -> io::Result<()> {
-    let state = read_state_with_active_window_read(Utc::now())?;
+    let state = read_state_with_focused_window_read(Utc::now())?;
     let output = std::panic::catch_unwind(|| format_status(&state))
         .unwrap_or_else(|_| unavailable_status_output());
     print_json(&output);
     Ok(())
 }
 
-fn handle_active_window_read() -> io::Result<()> {
-    let Some(address) = hyprland::active_window_address() else {
+fn handle_focused_window_read() -> io::Result<()> {
+    let Some(address) = hyprland::focused_window_address() else {
         return Ok(());
     };
     mark_address_read(&address, Utc::now())?;
     Ok(())
 }
 
-fn parse_active_window_address(line: &str) -> Option<String> {
+fn parse_focused_window_address(line: &str) -> Option<String> {
     let payload = line.strip_prefix("activewindowv2>>")?.trim();
     if payload.is_empty() || payload == "," {
         return None;
@@ -337,7 +337,7 @@ fn parse_active_window_address(line: &str) -> Option<String> {
     })
 }
 
-fn handle_watch_active_window() -> io::Result<()> {
+fn handle_watch_focused_window() -> io::Result<()> {
     let socket_path = hyprland::event_socket_path().ok_or_else(|| {
         io::Error::new(io::ErrorKind::NotFound, "Hyprland event socket not found")
     })?;
@@ -349,7 +349,7 @@ fn handle_watch_active_window() -> io::Result<()> {
                 let reader = BufReader::new(stream);
                 for line in reader.lines() {
                     let Ok(line) = line else { break };
-                    let Some(address) = parse_active_window_address(&line) else {
+                    let Some(address) = parse_focused_window_address(&line) else {
                         continue;
                     };
                     if let Err(error) = mark_address_read(&address, Utc::now()) {
@@ -407,8 +407,8 @@ Commands:
   focus-latest             Focus the latest unread event
   focus-id <event-id>      Focus an event by id
   mark-read <event-id>     Mark an event as read
-  active-window-read       Mark events for the active window as read
-  watch-active-window      Watch active-window changes
+  focused-window-read      Mark events for the focused window as read
+  watch-focused-window     Watch focused-window changes
   clear-read               Remove read events
   clear-all                Remove all events
   prune-stale              Remove events whose source window is gone
@@ -437,7 +437,7 @@ pub(crate) fn run() -> io::Result<i32> {
             Ok(0)
         }
         CliCommand::ListDisplayJson => {
-            let state = read_state_with_active_window_read(Utc::now())?;
+            let state = read_state_with_focused_window_read(Utc::now())?;
             print_json(&display_state_from_events(
                 state.version,
                 focusable_events(&state.events),
@@ -494,8 +494,8 @@ pub(crate) fn run() -> io::Result<i32> {
             eprintln!("agent-notifier: mark-read requires an event id");
             Ok(2)
         }
-        CliCommand::ActiveWindowRead => handle_active_window_read().map(|()| 0),
-        CliCommand::WatchActiveWindow => handle_watch_active_window().map(|()| 0),
+        CliCommand::FocusedWindowRead => handle_focused_window_read().map(|()| 0),
+        CliCommand::WatchFocusedWindow => handle_watch_focused_window().map(|()| 0),
         CliCommand::ClearRead => {
             let _ = with_state_update(&state_path()?, Utc::now(), clear_read_events)?;
             Ok(0)
@@ -505,9 +505,9 @@ pub(crate) fn run() -> io::Result<i32> {
             Ok(0)
         }
         CliCommand::PruneStale => {
-            let active_addresses = hyprland::try_active_window_addresses()?;
+            let existing_addresses = hyprland::try_existing_window_addresses()?;
             let _ = with_state_update(&state_path()?, Utc::now(), |state| {
-                prune_stale_events(state, &active_addresses)
+                prune_stale_events(state, &existing_addresses)
             })?;
             Ok(0)
         }

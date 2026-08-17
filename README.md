@@ -131,13 +131,13 @@ export default function (pi: ExtensionAPI) {
 }
 ```
 
-### Active window listener
+### Focused window listener
 
-Focusing a window by hand acknowledges its completion. Start the listener from
+Focusing a window by hand marks its events read. Start the listener from
 `~/.config/hypr/autostart.lua`:
 
 ```lua
-o.exec_on_start("/usr/local/bin/agent-notifier watch-active-window")
+o.exec_on_start("/usr/local/bin/agent-notifier watch-focused-window")
 ```
 
 Use the full path here: the Hyprland startup environment does not always carry
@@ -155,8 +155,8 @@ your shell `PATH`.
 | `focus-latest` | Focus the latest unread event |
 | `focus-id <event-id>` | Focus one event and mark it read |
 | `mark-read <event-id>` | Mark one event read |
-| `active-window-read` | Mark the active window's events read, once |
-| `watch-active-window` | Same, as a long-running listener |
+| `focused-window-read` | Mark the focused window's events read, once |
+| `watch-focused-window` | Same, as a long-running listener |
 | `clear-read`, `clear-all` | Remove read events, or all of them |
 | `prune-stale` | Remove events whose source window is gone |
 
@@ -195,7 +195,7 @@ kept.
 Since v0.3.0 a rewrite keeps JSON keys the binary does not know, so a newer
 binary's fields survive rewrites by this one. Binaries up to v0.2.0 still drop
 those keys on every rewrite. After an upgrade, restart every old process —
-above all the `watch-active-window` daemon — or recent fields are lost again
+above all the `watch-focused-window` daemon — or recent fields are lost again
 until the restart.
 
 ## Dependencies

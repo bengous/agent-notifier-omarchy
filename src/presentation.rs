@@ -57,7 +57,7 @@ pub(crate) fn build_info(
     }
 }
 
-pub(crate) fn clean_workspace_title(title: &str) -> String {
+pub(crate) fn clean_window_title(title: &str) -> String {
     title
         .trim_start_matches(|character: char| {
             character.is_whitespace()
@@ -88,7 +88,7 @@ pub(crate) fn event_label(event: &AgentEvent) -> String {
         return title.to_owned();
     }
     if let Some(workspace) = &event.workspace {
-        let title = clean_workspace_title(&workspace.title);
+        let title = clean_window_title(&workspace.title);
         if !title.is_empty() {
             return title;
         }
@@ -114,7 +114,7 @@ fn format_tooltip(events: &[AgentEvent]) -> String {
             let clean_title = event
                 .workspace
                 .as_ref()
-                .map(|workspace| clean_workspace_title(&workspace.title))
+                .map(|workspace| clean_window_title(&workspace.title))
                 .unwrap_or_default();
             let suffix = if clean_title.is_empty() || clean_title == label {
                 String::new()
@@ -248,13 +248,13 @@ mod tests {
     #[test]
     fn strips_any_leading_spinner_glyph() {
         // U+28F8 is not in the historical blocklist.
-        assert_eq!(clean_workspace_title("⣸ building"), "building");
-        assert_eq!(clean_workspace_title("\u{28f8} building"), "building");
-        assert_eq!(clean_workspace_title("◑ building"), "building");
-        assert_eq!(clean_workspace_title("◜ building"), "building");
-        assert_eq!(clean_workspace_title("◷ building"), "building");
-        assert_eq!(clean_workspace_title("✻ building"), "building");
-        assert_eq!(clean_workspace_title("  plain title  "), "plain title");
-        assert_eq!(clean_workspace_title("~/dotfiles"), "~/dotfiles");
+        assert_eq!(clean_window_title("⣸ building"), "building");
+        assert_eq!(clean_window_title("\u{28f8} building"), "building");
+        assert_eq!(clean_window_title("◑ building"), "building");
+        assert_eq!(clean_window_title("◜ building"), "building");
+        assert_eq!(clean_window_title("◷ building"), "building");
+        assert_eq!(clean_window_title("✻ building"), "building");
+        assert_eq!(clean_window_title("  plain title  "), "plain title");
+        assert_eq!(clean_window_title("~/dotfiles"), "~/dotfiles");
     }
 }

@@ -19,7 +19,7 @@ fn base_event() -> AgentEvent {
         "/repo/dotfiles".to_owned(),
         "/repo/dotfiles".to_owned(),
         Some("main".to_owned()),
-        Some(WorkspaceInfo {
+        Some(SourceWindow {
             id: 3,
             name: "3".to_owned(),
             monitor: "DP-3".to_owned(),
@@ -35,7 +35,7 @@ fn base_event() -> AgentEvent {
     )
 }
 
-fn base_pi_event(workspace: Option<WorkspaceInfo>) -> AgentEvent {
+fn base_pi_event(workspace: Option<SourceWindow>) -> AgentEvent {
     build_pi_event(
         &PiHookInput {
             cwd: Some("/repo/dotfiles".to_owned()),
@@ -129,7 +129,7 @@ fn displayed_projects(events: Vec<AgentEvent>) -> Vec<(String, String)> {
         .collect()
 }
 
-fn workspace(event: &AgentEvent) -> Result<WorkspaceInfo, Box<dyn std::error::Error>> {
+fn workspace(event: &AgentEvent) -> Result<SourceWindow, Box<dyn std::error::Error>> {
     event
         .workspace
         .clone()
@@ -144,17 +144,17 @@ fn state_of(events: Vec<AgentEvent>) -> AgentNotifierState {
 }
 
 #[test]
-fn parses_active_window_addresses_from_socket_lines() {
+fn parses_focused_window_addresses_from_socket_lines() {
     assert_eq!(
-        parse_active_window_address("activewindowv2>>5934e19c0f30").as_deref(),
+        parse_focused_window_address("activewindowv2>>5934e19c0f30").as_deref(),
         Some("0x5934e19c0f30")
     );
     assert_eq!(
-        parse_active_window_address("activewindowv2>>0x5934e19c0f30").as_deref(),
+        parse_focused_window_address("activewindowv2>>0x5934e19c0f30").as_deref(),
         Some("0x5934e19c0f30")
     );
-    assert_eq!(parse_active_window_address("activewindowv2>>"), None);
-    assert_eq!(parse_active_window_address("workspace>>3"), None);
+    assert_eq!(parse_focused_window_address("activewindowv2>>"), None);
+    assert_eq!(parse_focused_window_address("workspace>>3"), None);
 }
 
 #[test]
@@ -419,9 +419,9 @@ fn appends_newest_first_and_trims() {
             AgentEvent {
                 id: format!("event-{index}"),
                 session_id: format!("session-{index}"),
-                workspace: Some(WorkspaceInfo {
+                workspace: Some(SourceWindow {
                     client_pid: i64::from(index),
-                    ..workspace(&base_event()).unwrap_or_else(|_| WorkspaceInfo {
+                    ..workspace(&base_event()).unwrap_or_else(|_| SourceWindow {
                         id: 3,
                         name: "3".to_owned(),
                         monitor: "DP-3".to_owned(),
@@ -544,12 +544,12 @@ fn backs_up_corrupted_state() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn uses_cleaned_hyprland_title_with_branch_fallback() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(
-        presentation::clean_workspace_title("⠴ dotfiles | main"),
+        presentation::clean_window_title("⠴ dotfiles | main"),
         "dotfiles | main"
     );
     assert_eq!(event_label(&base_event()), "dotfiles | main");
     let fallback = AgentEvent {
-        workspace: Some(WorkspaceInfo {
+        workspace: Some(SourceWindow {
             title: String::new(),
             ..workspace(&base_event())?
         }),
@@ -670,7 +670,7 @@ fn captures_only_events_with_source_addresses() {
 fn emits_status_json_shape() -> Result<(), Box<dyn std::error::Error>> {
     let state = state_of(vec![AgentEvent {
         project_name: "quote\"project".to_owned(),
-        workspace: Some(WorkspaceInfo {
+        workspace: Some(SourceWindow {
             title: "line\nbreak".to_owned(),
             ..workspace(&base_event())?
         }),
@@ -813,9 +813,9 @@ fn includes_only_events_matching_live_hyprland_addresses() {
             ..event_with_session("session-only", "session-only")
         },
     ];
-    let active_addresses = HashSet::from(["0xlive".to_owned()]);
+    let existing_addresses = HashSet::from(["0xlive".to_owned()]);
 
-    let focusable = focusable_events_for_addresses(&events, &active_addresses);
+    let focusable = focusable_events_for_addresses(&events, &existing_addresses);
 
     assert_eq!(focusable.len(), 1);
     assert_eq!(
@@ -858,9 +858,11 @@ fn an_event_with_a_dead_source_process_is_pruned_despite_live_candidates(
         ..own
     };
     let state = state_of(vec![event_with_source_process("session-dead", dead)]);
-    let active = HashSet::from(["0xguess".to_owned()]);
+    let existing_addresses = HashSet::from(["0xguess".to_owned()]);
 
-    assert!(prune_stale_events(state, &active).events.is_empty());
+    assert!(prune_stale_events(state, &existing_addresses)
+        .events
+        .is_empty());
     Ok(())
 }
 
@@ -895,9 +897,12 @@ fn a_source_process_serializes_additively() -> Result<(), Box<dyn std::error::Er
 #[test]
 fn an_event_with_any_live_candidate_stays_focusable() {
     let event = event_with_candidates("guessed", 4682, &["0xguess", "0xother"]);
-    let active = HashSet::from(["0xother".to_owned()]);
+    let existing_addresses = HashSet::from(["0xother".to_owned()]);
 
-    assert_eq!(focusable_events_for_addresses(&[event], &active).len(), 1);
+    assert_eq!(
+        focusable_events_for_addresses(&[event], &existing_addresses).len(),
+        1
+    );
 }
 
 #[test]
@@ -907,13 +912,15 @@ fn an_event_with_no_live_candidate_is_pruned() {
         4682,
         &["0xguess", "0xother"],
     )]);
-    let active = HashSet::from(["0xelse".to_owned()]);
+    let existing_addresses = HashSet::from(["0xelse".to_owned()]);
 
-    assert!(prune_stale_events(state, &active).events.is_empty());
+    assert!(prune_stale_events(state, &existing_addresses)
+        .events
+        .is_empty());
 }
 
 #[test]
-fn a_fallback_focus_does_not_acknowledge_the_event() -> Result<(), Box<dyn std::error::Error>> {
+fn a_fallback_focus_does_not_mark_the_event_read() -> Result<(), Box<dyn std::error::Error>> {
     let shared = workspace(&event_with_candidates("shared", 1, &["0xguess", "0xother"]))?;
 
     assert_eq!(shared.focus_outcome(Some("0xguess")), FocusOutcome::Primary);
@@ -926,7 +933,7 @@ fn a_fallback_focus_does_not_acknowledge_the_event() -> Result<(), Box<dyn std::
 }
 
 #[test]
-fn the_source_is_certain_only_when_the_active_window_is_the_sole_candidate(
+fn the_source_is_certain_only_when_the_focused_window_is_the_sole_candidate(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let sole = workspace(&event_with_candidates("sole", 1, &["0xonly"]))?;
     let shared = workspace(&event_with_candidates("shared", 1, &["0xguess", "0xother"]))?;
@@ -982,9 +989,9 @@ fn prunes_events_without_live_hyprland_addresses() {
             ..event_with_session("session-only", "session-only")
         },
     ]);
-    let active_addresses = HashSet::from(["0xlive".to_owned()]);
+    let existing_addresses = HashSet::from(["0xlive".to_owned()]);
 
-    let pruned = prune_stale_events(state, &active_addresses);
+    let pruned = prune_stale_events(state, &existing_addresses);
 
     assert_eq!(pruned.events.len(), 1);
     assert_eq!(
