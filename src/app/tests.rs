@@ -37,7 +37,8 @@ fn hook_failure_exit_codes_follow_verified_harness_policy() {
 
 #[test]
 fn help_prints_the_usage() -> Result<(), Box<dyn Error>> {
-    let deps = fake(&tempdir()?)?;
+    let dir = tempdir()?;
+    let deps = fake(&dir)?;
 
     assert_eq!(run(&CliCommand::Help, &deps)?, 0);
 
@@ -47,7 +48,8 @@ fn help_prints_the_usage() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn version_prints_the_crate_version() -> Result<(), Box<dyn Error>> {
-    let deps = fake(&tempdir()?)?;
+    let dir = tempdir()?;
+    let deps = fake(&dir)?;
 
     assert_eq!(run(&CliCommand::Version, &deps)?, 0);
 
@@ -149,10 +151,11 @@ fn a_completion_on_the_focused_window_is_neither_stored_nor_alerted() -> Result<
 #[test]
 fn status_json_prints_the_widget_shape_and_marks_the_focused_window_read(
 ) -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
     let deps = FakeDeps {
         focused_window_address: Some("0xfocused".to_owned()),
         existing_window_addresses: addresses(&["0xfocused", "0xother"]),
-        ..fake(&tempdir()?)?
+        ..fake(&dir)?
     };
     seed(
         &deps,
@@ -176,10 +179,11 @@ fn status_json_prints_the_widget_shape_and_marks_the_focused_window_read(
 #[test]
 fn list_display_json_prints_the_display_fields_and_marks_the_focused_window_read(
 ) -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
     let deps = FakeDeps {
         focused_window_address: Some("0xfocused".to_owned()),
         existing_window_addresses: addresses(&["0xfocused"]),
-        ..fake(&tempdir()?)?
+        ..fake(&dir)?
     };
     seed(&deps, vec![event_with_address("focused", 1, "0xfocused")])?;
 
@@ -199,7 +203,8 @@ fn list_display_json_prints_the_display_fields_and_marks_the_focused_window_read
 
 #[test]
 fn list_json_prints_the_stored_state() -> Result<(), Box<dyn Error>> {
-    let deps = fake(&tempdir()?)?;
+    let dir = tempdir()?;
+    let deps = fake(&dir)?;
     seed(&deps, vec![event_with_address("stored", 1, "0xstored")])?;
 
     assert_eq!(run(&CliCommand::ListJson, &deps)?, 0);
@@ -214,7 +219,8 @@ fn list_json_prints_the_stored_state() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn version_json_prints_the_build_metadata_and_the_state_path() -> Result<(), Box<dyn Error>> {
-    let deps = fake(&tempdir()?)?;
+    let dir = tempdir()?;
+    let deps = fake(&dir)?;
 
     assert_eq!(run(&CliCommand::VersionJson, &deps)?, 0);
 
@@ -241,9 +247,10 @@ fn version_json_prints_the_build_metadata_and_the_state_path() -> Result<(), Box
 
 #[test]
 fn focus_id_focuses_the_source_window_and_marks_the_event_read() -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
     let deps = FakeDeps {
         focus_outcome: FocusOutcome::Primary,
-        ..fake(&tempdir()?)?
+        ..fake(&dir)?
     };
     seed(&deps, vec![event_with_address("target", 1, "0xtarget")])?;
 
@@ -255,7 +262,8 @@ fn focus_id_focuses_the_source_window_and_marks_the_event_read() -> Result<(), B
 
 #[test]
 fn focus_id_reports_an_event_it_cannot_focus() -> Result<(), Box<dyn Error>> {
-    let deps = fake(&tempdir()?)?;
+    let dir = tempdir()?;
+    let deps = fake(&dir)?;
     seed(&deps, vec![event_with_address("target", 1, "0xtarget")])?;
 
     assert_eq!(run(&CliCommand::FocusId("unknown".to_owned()), &deps)?, 1);
@@ -266,9 +274,10 @@ fn focus_id_reports_an_event_it_cannot_focus() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn a_fallback_focus_leaves_the_event_unread() -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
     let deps = FakeDeps {
         focus_outcome: FocusOutcome::Fallback,
-        ..fake(&tempdir()?)?
+        ..fake(&dir)?
     };
     seed(&deps, vec![event_with_address("target", 1, "0xtarget")])?;
 
@@ -280,7 +289,8 @@ fn a_fallback_focus_leaves_the_event_unread() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn focus_id_without_an_id_is_a_usage_error() -> Result<(), Box<dyn Error>> {
-    let deps = fake(&tempdir()?)?;
+    let dir = tempdir()?;
+    let deps = fake(&dir)?;
 
     assert_eq!(run(&CliCommand::FocusIdMissing, &deps)?, 2);
 
@@ -289,10 +299,11 @@ fn focus_id_without_an_id_is_a_usage_error() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn focus_latest_focuses_the_newest_unread_event() -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
     let deps = FakeDeps {
         focus_outcome: FocusOutcome::Primary,
         existing_window_addresses: addresses(&["0xold", "0xnew"]),
-        ..fake(&tempdir()?)?
+        ..fake(&dir)?
     };
     seed(
         &deps,
@@ -311,7 +322,8 @@ fn focus_latest_focuses_the_newest_unread_event() -> Result<(), Box<dyn Error>> 
 
 #[test]
 fn mark_read_marks_the_event_read() -> Result<(), Box<dyn Error>> {
-    let deps = fake(&tempdir()?)?;
+    let dir = tempdir()?;
+    let deps = fake(&dir)?;
     seed(&deps, vec![event_with_address("target", 1, "0xtarget")])?;
 
     assert_eq!(run(&CliCommand::MarkRead("target".to_owned()), &deps)?, 0);
@@ -322,7 +334,8 @@ fn mark_read_marks_the_event_read() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn mark_read_without_an_id_is_a_usage_error() -> Result<(), Box<dyn Error>> {
-    let deps = fake(&tempdir()?)?;
+    let dir = tempdir()?;
+    let deps = fake(&dir)?;
 
     assert_eq!(run(&CliCommand::MarkReadMissing, &deps)?, 2);
 
@@ -331,9 +344,10 @@ fn mark_read_without_an_id_is_a_usage_error() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn focused_window_read_marks_the_focused_windows_events_read() -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
     let deps = FakeDeps {
         focused_window_address: Some("0xfocused".to_owned()),
-        ..fake(&tempdir()?)?
+        ..fake(&dir)?
     };
     seed(
         &deps,
@@ -352,9 +366,10 @@ fn focused_window_read_marks_the_focused_windows_events_read() -> Result<(), Box
 
 #[test]
 fn watch_focused_window_marks_every_reported_window_read() -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
     let deps = FakeDeps {
         focused_window_changes: vec!["0xfirst".to_owned(), "0xsecond".to_owned()],
-        ..fake(&tempdir()?)?
+        ..fake(&dir)?
     };
     seed(
         &deps,
@@ -375,7 +390,8 @@ fn watch_focused_window_marks_every_reported_window_read() -> Result<(), Box<dyn
 
 #[test]
 fn clear_read_keeps_only_the_unread_events() -> Result<(), Box<dyn Error>> {
-    let deps = fake(&tempdir()?)?;
+    let dir = tempdir()?;
+    let deps = fake(&dir)?;
     seed(
         &deps,
         vec![
@@ -401,7 +417,8 @@ fn clear_read_keeps_only_the_unread_events() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn clear_all_empties_the_state() -> Result<(), Box<dyn Error>> {
-    let deps = fake(&tempdir()?)?;
+    let dir = tempdir()?;
+    let deps = fake(&dir)?;
     seed(&deps, vec![event_with_address("stored", 1, "0xstored")])?;
 
     assert_eq!(run(&CliCommand::ClearAll, &deps)?, 0);
@@ -414,9 +431,10 @@ fn clear_all_empties_the_state() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn prune_stale_drops_the_events_whose_window_is_gone() -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
     let deps = FakeDeps {
         existing_window_addresses: addresses(&["0xalive"]),
-        ..fake(&tempdir()?)?
+        ..fake(&dir)?
     };
     seed(
         &deps,
@@ -440,7 +458,8 @@ fn prune_stale_drops_the_events_whose_window_is_gone() -> Result<(), Box<dyn Err
 
 #[test]
 fn an_unknown_command_is_a_usage_error() -> Result<(), Box<dyn Error>> {
-    let deps = fake(&tempdir()?)?;
+    let dir = tempdir()?;
+    let deps = fake(&dir)?;
 
     assert_eq!(run(&CliCommand::Unknown, &deps)?, 2);
 
