@@ -13,6 +13,7 @@ INJECTOR_CLASS="agent-notifier-injector"
 # An agent with no session title falls back to its window title, so the
 # injector's title is what those rows read on the screenshot.
 INJECTOR_TITLE="agent-notifier fixtures"
+INJECTOR_WORKSPACE=9
 
 AGENTS=(claude codex pi)
 PROJECTS=(alpha beta)
@@ -75,6 +76,7 @@ on_exit() {
   ((status == 0)) && return 0
   artifacts="$(dirname -- "${screenshot}")"
   mkdir -p -- "${artifacts}"
+  hyprctl -j clients >"${artifacts}/clients.json" 2>/dev/null || true
   cp -- "${RUN_DIR}"/*.log "${artifacts}/" 2>/dev/null && echo "agent-notifier: logs copied to ${artifacts}" >&2
   "${HARNESS_DIR}/stop.sh" >/dev/null 2>&1 || true
   return "${status}"
@@ -217,9 +219,14 @@ wait_for "the injector window" 30 injector_is_mapped
 # A hook whose source window holds the focus discards its own completion, and
 # list-display-json marks that window's events read. Parking the injector out of
 # focus is what lets the fixtures reach the popup — and keeps it out of frame.
-hyprctl dispatch movetoworkspacesilent "special:injector,address:$(injector_address)" >/dev/null
-nothing_is_focused() { [[ $(hyprctl -j activewindow | jq -r '.address // ""') == "" ]]; }
-wait_for "the injector window to lose focus" 30 nothing_is_focused
+# The terminal can ask for activation again after it maps, so the move is
+# re-asserted until the compositor reports no focused window at all.
+park_injector() {
+  hyprctl dispatch movetoworkspacesilent \
+    "${INJECTOR_WORKSPACE},address:$(injector_address)" >/dev/null
+  [[ -z $(hyprctl -j activewindow | jq -r '.address // ""') ]]
+}
+wait_for "the injector window to leave the focus" 30 park_injector
 
 touch "${RUN_DIR}/go"
 injection_is_done() { [[ -f ${RUN_DIR}/injected ]]; }
