@@ -7,4 +7,5 @@ QtObject {
   readonly property real readMarkOpacity: 0.6
   readonly property int hoverAnimationMs: 120
   readonly property int relativeTimeRefreshMs: 30000
+  readonly property int cliReprobeMs: 15000
 }

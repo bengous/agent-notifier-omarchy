@@ -30,7 +30,9 @@ BarWidget {
     var lines = events
       .filter(event => String(event.status) === "unread")
       .map(event => String(event.displayLabel || "") + " " + Time.absoluteTime(event.createdAt))
-    return lines.length === 0 ? "No agent completions" : lines.join("\n")
+    if (lines.length > 0) return lines.join("\n")
+    if (cliMissing) return "agent-notifier is not on PATH. Install it first: README, section Install."
+    return "No agent completions"
   }
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -73,7 +75,7 @@ BarWidget {
   function reportMissingCli() {
     if (cliMissing) return
     cliMissing = true
-    console.warn("agent-notifier", "The agent-notifier binary is not on PATH; hiding the widget")
+    console.warn("agent-notifier", "The agent-notifier binary is not on PATH; showing the setup card")
   }
 
   function enqueue(args) {
@@ -97,7 +99,6 @@ BarWidget {
     close()
   }
 
-  visible: !cliMissing
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -119,6 +120,15 @@ BarWidget {
     onTriggered: root.nowMs = Date.now()
   }
 
+  // A missing binary is a reversible state: once it lands on PATH, the next
+  // probe succeeds and the widget recovers without a shell restart.
+  Timer {
+    running: root.cliMissing
+    interval: Theme.cliReprobeMs
+    repeat: true
+    onTriggered: root.refresh()
+  }
+
   // The binary owns the state path and reports it as statePath; the watch
   // starts once version-json delivers it and stays off with an older binary
   // rather than deriving a second path from the environment (README, State).
@@ -134,7 +144,10 @@ BarWidget {
   CliProcess {
     id: listProcess
     command: ["agent-notifier", "list-display-json"]
-    onSucceeded: function(stdout) { root.applyDisplayState(stdout) }
+    onSucceeded: function(stdout) {
+      root.cliMissing = false
+      root.applyDisplayState(stdout)
+    }
     onStartFailed: root.reportMissingCli()
     onSettled: {
       if (root.refreshQueued) {
@@ -173,7 +186,7 @@ BarWidget {
 
     BorderSurface {
       id: badge
-      visible: root.unreadCount > 0
+      visible: root.unreadCount > 0 || root.cliMissing
       anchors.right: parent.right
       anchors.top: parent.top
       anchors.rightMargin: Math.max(0, (button.width - Style.bar.iconCanvas) / 2 - Style.space(3))
@@ -187,7 +200,7 @@ BarWidget {
       Text {
         id: badgeCount
         anchors.centerIn: parent
-        text: String(root.unreadCount)
+        text: root.unreadCount > 0 ? String(root.unreadCount) : "!"
         color: Color.background
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -268,10 +281,20 @@ BarWidget {
         }
       }
 
+      SetupCard {
+        Layout.fillWidth: true
+        visible: root.events.length === 0 && root.cliMissing
+        foreground: root.foreground
+        dim: root.dim
+        urgent: root.urgent
+        fontFamily: root.fontFamily
+        cliMissing: root.cliMissing
+      }
+
       Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        visible: root.events.length === 0
+        visible: root.events.length === 0 && !root.cliMissing
 
         Text {
           anchors.centerIn: parent
