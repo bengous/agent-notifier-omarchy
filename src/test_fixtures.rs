@@ -5,6 +5,7 @@ use std::error::Error;
 use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::app::Deps;
 use crate::event::{
@@ -14,8 +15,8 @@ use crate::event::{
 use crate::intake::agents::profile;
 use crate::intake::build::{build_event, CaptureContext, HookInput};
 
-pub(crate) fn fixture_clock() -> Result<DateTime<Utc>, Box<dyn std::error::Error>> {
-    DateTime::from_timestamp_millis(1_778_061_600_000).ok_or_else(|| "invalid fixture clock".into())
+pub(crate) fn fixture_clock() -> DateTime<Utc> {
+    DateTime::UNIX_EPOCH + Duration::from_secs(1_778_061_600)
 }
 
 fn no_process_is_alive(_process: &ProcessRef) -> bool {
@@ -40,10 +41,10 @@ pub(crate) struct FakeDeps {
 }
 
 impl FakeDeps {
-    pub(crate) fn new(state_path: PathBuf) -> Result<Self, Box<dyn Error>> {
-        Ok(Self {
+    pub(crate) fn new(state_path: PathBuf) -> Self {
+        Self {
             state_path,
-            now: fixture_clock()?,
+            now: fixture_clock(),
             stdin: String::new(),
             focused_window_address: None,
             existing_window_addresses: HashSet::new(),
@@ -53,7 +54,7 @@ impl FakeDeps {
             focused_window_changes: Vec::new(),
             printed_lines: RefCell::new(Vec::new()),
             alerts: RefCell::new(Vec::new()),
-        })
+        }
     }
 
     pub(crate) fn printed(&self) -> String {
@@ -144,7 +145,7 @@ fn fixture_context(workspace: Option<SourceWindow>, random_id: &str) -> CaptureC
         project_key: "/repo/dotfiles".to_owned(),
         branch_name: Some("main".to_owned()),
         workspace,
-        now: DateTime::from_timestamp_millis(1_778_061_600_000).unwrap_or_else(Utc::now),
+        now: fixture_clock(),
         random_id: random_id.to_owned(),
         env_session_id: None,
     }

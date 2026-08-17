@@ -8,7 +8,7 @@ fn backs_up_corrupted_state() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempdir()?;
     let path = dir.path().join("events.json");
     fs::write(&path, "{bad json")?;
-    let state = with_state_update(&path, fixture_clock()?, |state| {
+    let state = with_state_update(&path, fixture_clock(), |state| {
         append_and_trim(state, base_event())
     })?;
     assert_eq!(state.events.len(), 1);
@@ -29,7 +29,7 @@ fn backs_up_corrupted_state() -> Result<(), Box<dyn std::error::Error>> {
 fn mark_read_persists_the_read_status() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempdir()?;
     let path = dir.path().join("events.json");
-    let now = fixture_clock()?;
+    let now = fixture_clock();
     with_state_update(&path, now, |state| {
         append_and_trim(state, event_with_address("read-me", 300, "0xbeef"))
     })?;
@@ -57,7 +57,7 @@ fn keeps_unknown_fields_across_state_rewrites() -> Result<(), Box<dyn std::error
             "workspaceExtra":"workspace-kept"},
         "status":"unread","eventExtra":"event-kept"}]}"#;
     fs::write(&path, raw)?;
-    let now = DateTime::from_timestamp_millis(0).unwrap_or_else(Utc::now);
+    let now = fixture_clock();
 
     with_state_update(&path, now, |state| {
         set_event_status(state, "e", EventStatus::Read)
@@ -78,7 +78,7 @@ fn keeps_unknown_fields_across_state_rewrites() -> Result<(), Box<dyn std::error
 fn skips_the_write_when_the_update_changes_nothing() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempdir()?;
     let path = dir.path().join("events.json");
-    let now = DateTime::from_timestamp_millis(0).unwrap_or_else(Utc::now);
+    let now = fixture_clock();
     write_state_atomic(&path, &empty_state())?;
     let first = fs::metadata(&path)?.modified()?;
     thread::sleep(Duration::from_millis(20));
@@ -106,7 +106,7 @@ fn propagates_an_unreadable_state_file() -> Result<(), Box<dyn std::error::Error
     let path = dir.path().join("events.json");
     // A directory where the state file belongs: reading it is an error, not "empty".
     fs::create_dir(&path)?;
-    assert!(read_state(&path, fixture_clock()?).is_err());
+    assert!(read_state(&path, fixture_clock()).is_err());
     Ok(())
 }
 
@@ -116,7 +116,7 @@ fn a_read_quarantines_a_corrupt_state_only_under_the_store_lock(
     let dir = tempdir()?;
     let path = dir.path().join("events.json");
     fs::write(&path, "{bad json")?;
-    let now = fixture_clock()?;
+    let now = fixture_clock();
     let held = acquire_lock(&path)?;
 
     assert!(read_state(&path, now).is_err());
@@ -162,7 +162,7 @@ fn read_replaces_a_legacy_lock_directory_without_rewriting_state(
     let dir = tempdir()?;
     let path = dir.path().join("events.json");
     let lock_path = lock_path_for(&path);
-    let now = DateTime::from_timestamp_millis(0).unwrap_or_else(Utc::now);
+    let now = fixture_clock();
     write_state_atomic(&path, &empty_state())?;
     let modified = fs::metadata(&path)?.modified()?;
     fs::create_dir(&lock_path)?;

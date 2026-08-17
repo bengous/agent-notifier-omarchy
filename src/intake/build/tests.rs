@@ -73,7 +73,7 @@ fn builds_claude_event_shape() -> Result<(), Box<dyn std::error::Error>> {
         },
         CaptureContext {
             workspace: Some(workspace(&base_event())?),
-            ..context(fixture_clock()?)
+            ..context(fixture_clock())
         },
     );
     assert_eq!(event.agent, "claude");
@@ -103,30 +103,26 @@ fn stores_pi_events_as_main_agent_events() -> Result<(), Box<dyn std::error::Err
 }
 
 #[test]
-fn the_session_id_falls_back_along_the_profile_chain() -> Result<(), Box<dyn std::error::Error>> {
+fn the_session_id_falls_back_along_the_profile_chain() {
     let input = parse_hook_input(r#"{"leafId":"leaf-1"}"#);
-    let event = build_event(profile(Agent::Pi), &input, context(fixture_clock()?));
+    let event = build_event(profile(Agent::Pi), &input, context(fixture_clock()));
 
     assert_eq!(event.session_id, "leaf-1");
-    Ok(())
 }
 
 #[test]
-fn without_any_session_source_the_session_id_is_unknown() -> Result<(), Box<dyn std::error::Error>>
-{
+fn without_any_session_source_the_session_id_is_unknown() {
     let event = build_event(
         profile(Agent::Codex),
         &HookInput::default(),
-        context(fixture_clock()?),
+        context(fixture_clock()),
     );
 
     assert_eq!(event.session_id, "unknown");
-    Ok(())
 }
 
 #[test]
-fn a_hypothetical_agent_is_a_profile_not_a_new_pipeline() -> Result<(), Box<dyn std::error::Error>>
-{
+fn a_hypothetical_agent_is_a_profile_not_a_new_pipeline() {
     let hypothetical = Profile {
         id: "hypothetical",
         session_id_fields: &[SessionIdField::LeafId, SessionIdField::SessionId],
@@ -135,16 +131,15 @@ fn a_hypothetical_agent_is_a_profile_not_a_new_pipeline() -> Result<(), Box<dyn 
     };
     let input = parse_hook_input(r#"{"session_id":"s-1","leafId":"leaf-9"}"#);
 
-    let event = build_event(&hypothetical, &input, context(fixture_clock()?));
+    let event = build_event(&hypothetical, &input, context(fixture_clock()));
 
     assert_eq!(event.agent, "hypothetical");
     assert_eq!(event.session_id, "leaf-9");
     assert_eq!(event.kind, "main");
-    Ok(())
 }
 
 #[test]
-fn the_environment_session_id_backstops_an_empty_chain() -> Result<(), Box<dyn std::error::Error>> {
+fn the_environment_session_id_backstops_an_empty_chain() {
     let hypothetical = Profile {
         id: "hypothetical",
         session_id_fields: &[SessionIdField::SessionId],
@@ -157,10 +152,9 @@ fn the_environment_session_id_backstops_an_empty_chain() -> Result<(), Box<dyn s
         &HookInput::default(),
         CaptureContext {
             env_session_id: Some("env-session".to_owned()),
-            ..context(fixture_clock()?)
+            ..context(fixture_clock())
         },
     );
 
     assert_eq!(event.session_id, "env-session");
-    Ok(())
 }

@@ -20,7 +20,7 @@ impl Serialize for FailingJson {
 fn a_serialization_failure_propagates_instead_of_printing_a_status_shape(
 ) -> Result<(), Box<dyn Error>> {
     let dir = tempdir()?;
-    let deps = fake(&dir)?;
+    let deps = fake(&dir);
 
     assert!(print_json(&FailingJson, &deps).is_err());
     Ok(())
@@ -29,7 +29,7 @@ fn a_serialization_failure_propagates_instead_of_printing_a_status_shape(
 #[test]
 fn a_read_query_marks_the_focused_windows_events_read() -> Result<(), Box<dyn Error>> {
     let dir = tempdir()?;
-    let deps = fake(&dir)?;
+    let deps = fake(&dir);
     seed(
         &deps,
         vec![
@@ -56,7 +56,7 @@ fn a_read_query_marks_the_focused_windows_events_read() -> Result<(), Box<dyn Er
 #[test]
 fn a_read_query_that_changes_nothing_skips_the_state_rewrite() -> Result<(), Box<dyn Error>> {
     let dir = tempdir()?;
-    let deps = fake(&dir)?;
+    let deps = fake(&dir);
     seed(&deps, vec![event_with_address("unread", 1, "0xaway")])?;
     let modified = fs::metadata(&deps.state_path)?.modified()?;
     thread::sleep(Duration::from_millis(20));
@@ -67,7 +67,7 @@ fn a_read_query_that_changes_nothing_skips_the_state_rewrite() -> Result<(), Box
     Ok(())
 }
 
-fn fake(dir: &TempDir) -> Result<FakeDeps, Box<dyn Error>> {
+fn fake(dir: &TempDir) -> FakeDeps {
     FakeDeps::new(dir.path().join("events.json"))
 }
 

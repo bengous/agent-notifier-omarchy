@@ -365,7 +365,7 @@ fn prune_stale_keeps_only_events_with_an_existing_source_window(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempdir()?;
     let path = dir.path().join("events.json");
-    let now = fixture_clock()?;
+    let now = fixture_clock();
     with_state_update(&path, now, |state| {
         let state = append_and_trim(state, event_with_address("gone", 7, "0xstale"));
         append_and_trim(state, event_with_address("here", 42, "0xlive"))
