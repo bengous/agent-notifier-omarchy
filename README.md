@@ -225,6 +225,29 @@ the newer fields until you do.
 | `git` | Optional | No branch name; the cwd becomes the project path |
 | Rust >= 1.89, Bash | Build only | - |
 
+## Tests
+
+| Layer | Command | Runs |
+|---|---|---|
+| Binary | `cargo test` | CI |
+| Widget visual | `tests/widget-harness/run.sh` | Locally only |
+
+`tests/widget-harness/run.sh` runs the real `BarWidget.qml` under a nested
+Hyprland alongside omarchy's own `Ui` and `Commons`, injects completions through
+the binary's hooks, opens the popup over its IPC and captures it with `grim`:
+
+```bash
+tests/widget-harness/run.sh --events 7
+tests/widget-harness/run.sh --keep   # leave it up to drive by hand
+tests/widget-harness/stop.sh
+```
+
+The screenshot lands in `target/widget-harness/popup.png` and covers the whole
+nested output, whose size follows the window the host compositor hands it. The
+running shell is never touched: the state goes to a temporary `XDG_STATE_HOME`,
+quickshell is only ever addressed by `--pid`, and the run brings its own
+`notify-send`. It needs `foot`, `grim` and `jq`.
+
 ## Licence
 
 MIT. See `LICENSE` and `ASSETS.md`.
