@@ -94,8 +94,8 @@ fn sound_file() -> PathBuf {
         .join("agent-complete.mp3")
 }
 
-fn notify(event: &AgentEvent) {
-    let agent_name = Agent::from_id(&event.agent).display_name();
+fn notify(agent: Agent, event: &AgentEvent) {
+    let agent_name = agent.display_name();
     let _ = run_command_owned(
         &[
             "notify-send".to_owned(),
@@ -124,7 +124,11 @@ fn play_sound() {
     let _ = run_command(&["canberra-gtk-play", "-f", &file], DEFAULT_TIMEOUT);
 }
 
-fn capture_completion_event(event: &AgentEvent, now: DateTime<Utc>) -> io::Result<()> {
+fn capture_completion_event(
+    agent: Agent,
+    event: &AgentEvent,
+    now: DateTime<Utc>,
+) -> io::Result<()> {
     match capture_decision(event, hyprland::focused_window_address().as_deref()) {
         CaptureDecision::Discard => return Ok(()),
         CaptureDecision::PersistAndAlert => {
@@ -140,7 +144,7 @@ fn capture_completion_event(event: &AgentEvent, now: DateTime<Utc>) -> io::Resul
     }
     let notify_event = event.clone();
     let sound = thread::spawn(play_sound);
-    let notification = thread::spawn(move || notify(&notify_event));
+    let notification = thread::spawn(move || notify(agent, &notify_event));
     let _ = sound.join();
     let _ = notification.join();
     Ok(())
@@ -165,7 +169,7 @@ fn handle_agent_hook(agent: Agent) -> io::Result<()> {
     io::stdin().read_to_string(&mut raw)?;
     let now = Utc::now();
     let event = intake::capture(agent, &raw, resolve_source_window(), now);
-    capture_completion_event(&event, now)
+    capture_completion_event(agent, &event, now)
 }
 
 fn handle_status_json() -> io::Result<()> {
