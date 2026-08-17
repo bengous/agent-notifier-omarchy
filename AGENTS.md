@@ -33,3 +33,7 @@ One concept, one name — in code, docs, and tests:
 - `pub(crate)` by default; English everywhere; stderr messages prefixed `agent-notifier: `.
 - Tests: behavior-sentence names, `Result<_, Box<dyn Error>>`, layered fixtures.
 - QML: sizes and typography via omarchy `Style.*` tokens; local tokens live in one place; coerce all external data defensively; one component per file; shared JS in `js/<concept>.js` — never `lib`/`utils`; prefer native Qt/JS APIs over hand-rolled helpers.
+
+## Keeping these docs honest
+
+`AGENTS.md` and `.claude/rules/` are living documents: when your change makes a rule stale, fix the doc in the same commit; when a new convention crystallizes, add a rule. They guide upfront — never let them re-explain code that should document itself.
