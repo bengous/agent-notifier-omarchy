@@ -280,9 +280,9 @@ fn counts_unread_events_in_status_label() {
 }
 
 #[test]
-fn emits_status_json_shape() -> Result<(), Box<dyn std::error::Error>> {
+fn the_status_tooltip_is_the_window_title_and_the_completion_time(
+) -> Result<(), Box<dyn std::error::Error>> {
     let state = state_of(vec![AgentEvent {
-        project_name: "quote\"project".to_owned(),
         workspace: Some(SourceWindow {
             title: "line\nbreak".to_owned(),
             ..workspace(&base_event())?
