@@ -8,7 +8,7 @@ paths:
 
 # Widget conventions
 
-- `BarWidget.qml` is assembly only (target < ~150 lines); every new piece of UI is a new component file in `components/`.
+- `BarWidget.qml` is assembly only — state wiring, CLI plumbing, and declarative composition of `components/`; zero domain logic in the entry point. Every new piece of UI is a new component file in `components/`, never growth of `BarWidget.qml`.
 - Tokens: omarchy `Style.*` is the only source for sizes and typography — never duplicated. `Theme.qml` holds only what `Style.*` lacks: per-agent brand colors, animation durations, refresh intervals, derived color factors. Zero magic numbers inside components.
 - `Theme.qml` is a singleton declared in the root `qmldir`, and qmldir singletons resolve only through an explicit directory import: `import "."` in `BarWidget.qml`, `import ".."` in `components/`. The `qmldir` also names `BarWidget` so directory imports of the plugin (the harness shell) keep seeing it.
 - Shared JS: one file per concept in `js/` (`js/time.js` first); extract at the second consumer; prefer native Qt/JS APIs before writing a helper; never `lib.js`/`utils.js`/`helpers.js`.
