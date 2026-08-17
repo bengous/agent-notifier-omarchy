@@ -14,6 +14,8 @@ INJECTOR_CLASS="agent-notifier-injector"
 # injector's title is what those rows read on the screenshot.
 INJECTOR_TITLE="agent-notifier fixtures"
 INJECTOR_WORKSPACE=9
+FIXTURE_AGE_STEP_SECONDS=1020
+MINIMUM_SCREENSHOT_BYTES=1024
 
 AGENTS=(claude codex pi)
 PROJECTS=(alpha beta)
@@ -240,8 +242,9 @@ stored=$(env "${harness_env[@]}" agent-notifier list-json | jq '.events | length
 # wall of "just now". Ageing them apart is what puts each relative-time branch
 # on the screenshot.
 state_file="${RUN_DIR}/state/agent-notifier/events.json"
-jq '.events |= (to_entries | map(.value.createdAt =
-    ((.value.createdAt | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - .key * 1020
+jq --argjson step "${FIXTURE_AGE_STEP_SECONDS}" \
+  '.events |= (to_entries | map(.value.createdAt =
+    ((.value.createdAt | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - .key * $step
      | todateiso8601)) | map(.value))' "${state_file}" >"${state_file}.aged"
 mv "${state_file}.aged" "${state_file}"
 
@@ -274,7 +277,7 @@ sleep 0.5
 # grim rejects -o together with -g.
 env WAYLAND_DISPLAY="${nested_display}" grim -o "${monitor}" "${screenshot}"
 [[ -s ${screenshot} ]] || fail "grim wrote no screenshot"
-(($(stat -c %s -- "${screenshot}") > 1024)) || fail "the screenshot is empty"
+(($(stat -c %s -- "${screenshot}") > MINIMUM_SCREENSHOT_BYTES)) || fail "the screenshot is empty"
 
 echo "harness: ${event_count} completions injected, popup captured on ${monitor} (${monitor_size})"
 echo "harness: screenshot ${screenshot}"
