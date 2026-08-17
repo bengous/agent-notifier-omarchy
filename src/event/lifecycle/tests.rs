@@ -30,7 +30,8 @@ fn stored_event_ids(path: &Path) -> Result<Vec<String>, Box<dyn std::error::Erro
 }
 
 #[test]
-fn appends_newest_first_and_trims() {
+fn appends_newest_first_and_trims() -> Result<(), Box<dyn std::error::Error>> {
+    let source_window = workspace(&base_event())?;
     let mut state = empty_state();
     for index in 0..55 {
         state = append_and_trim(
@@ -40,17 +41,7 @@ fn appends_newest_first_and_trims() {
                 session_id: format!("session-{index}"),
                 workspace: Some(SourceWindow {
                     client_pid: i64::from(index),
-                    ..workspace(&base_event()).unwrap_or_else(|_| SourceWindow {
-                        id: 3,
-                        name: "3".to_owned(),
-                        monitor: "DP-3".to_owned(),
-                        client_pid: i64::from(index),
-                        client_address: None,
-                        client_addresses: Vec::new(),
-                        source_process: None,
-                        title: "dotfiles | main".to_owned(),
-                        extra: serde_json::Map::new(),
-                    })
+                    ..source_window.clone()
                 }),
                 ..base_event()
             },
@@ -65,6 +56,7 @@ fn appends_newest_first_and_trims() {
         state.events.last().map(|event| event.id.as_str()),
         Some("event-5")
     );
+    Ok(())
 }
 
 #[test]
