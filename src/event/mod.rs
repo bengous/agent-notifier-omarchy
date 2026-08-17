@@ -1,4 +1,7 @@
+mod agent;
 pub(crate) mod store;
+
+pub(crate) use agent::Agent;
 
 use serde::{Deserialize, Serialize};
 

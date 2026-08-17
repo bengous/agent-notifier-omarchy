@@ -150,7 +150,7 @@ fn acquire_lock(path: &Path) -> io::Result<LockGuard> {
     }
 }
 
-fn current_millis() -> u128 {
+pub(crate) fn current_millis() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_millis())

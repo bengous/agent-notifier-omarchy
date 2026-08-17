@@ -2,61 +2,62 @@ use chrono::{DateTime, Utc};
 use std::ffi::OsStr;
 use std::path::Path;
 
-use crate::event::{empty_state, AgentEvent, AgentNotifierState, ProcessRef, SourceWindow};
-use crate::intake::pi_event::{build_pi_event, PiHookInput};
-use crate::intake::stop_event::{build_stop_event, StopHookInput};
+use crate::event::{empty_state, Agent, AgentEvent, AgentNotifierState, ProcessRef, SourceWindow};
+use crate::intake::agents::profile;
+use crate::intake::build::{build_event, CaptureContext, HookInput};
 
 pub(crate) fn fixture_clock() -> Result<DateTime<Utc>, Box<dyn std::error::Error>> {
     DateTime::from_timestamp_millis(1_778_061_600_000).ok_or_else(|| "invalid fixture clock".into())
 }
 
+fn fixture_context(workspace: Option<SourceWindow>, random_id: &str) -> CaptureContext {
+    CaptureContext {
+        cwd: "/repo/dotfiles".to_owned(),
+        project_path: "/repo/dotfiles".to_owned(),
+        project_key: "/repo/dotfiles".to_owned(),
+        branch_name: Some("main".to_owned()),
+        workspace,
+        now: DateTime::from_timestamp_millis(1_778_061_600_000).unwrap_or_else(Utc::now),
+        random_id: random_id.to_owned(),
+        env_session_id: None,
+    }
+}
+
 pub(crate) fn base_event() -> AgentEvent {
-    build_stop_event(
-        "codex",
-        &StopHookInput {
+    build_event(
+        profile(Agent::Codex),
+        &HookInput {
             cwd: Some("/repo/dotfiles".to_owned()),
             session_id: Some("session-1".to_owned()),
-            session_id_camel: None,
-            transcript_path: None,
+            ..HookInput::default()
         },
-        "/repo/dotfiles".to_owned(),
-        "/repo/dotfiles".to_owned(),
-        "/repo/dotfiles".to_owned(),
-        Some("main".to_owned()),
-        Some(SourceWindow {
-            id: 3,
-            name: "3".to_owned(),
-            monitor: "DP-3".to_owned(),
-            client_pid: 300,
-            client_address: None,
-            client_addresses: Vec::new(),
-            source_process: None,
-            title: "dotfiles | main".to_owned(),
-            extra: serde_json::Map::new(),
-        }),
-        DateTime::from_timestamp_millis(1_778_061_600_000).unwrap_or_else(Utc::now),
-        "abcd",
+        fixture_context(
+            Some(SourceWindow {
+                id: 3,
+                name: "3".to_owned(),
+                monitor: "DP-3".to_owned(),
+                client_pid: 300,
+                client_address: None,
+                client_addresses: Vec::new(),
+                source_process: None,
+                title: "dotfiles | main".to_owned(),
+                extra: serde_json::Map::new(),
+            }),
+            "abcd",
+        ),
     )
 }
 
 pub(crate) fn base_pi_event(workspace: Option<SourceWindow>) -> AgentEvent {
-    build_pi_event(
-        &PiHookInput {
+    build_event(
+        profile(Agent::Pi),
+        &HookInput {
             cwd: Some("/repo/dotfiles".to_owned()),
-            session_id: None,
-            session_id_camel: None,
-            session_file: None,
-            session_file_camel: Some("/repo/home/.pi/agent/sessions/pi-session.jsonl".to_owned()),
-            leaf_id: None,
-            leaf_id_camel: Some("leaf-1".to_owned()),
+            session_file: Some("/repo/home/.pi/agent/sessions/pi-session.jsonl".to_owned()),
+            leaf_id: Some("leaf-1".to_owned()),
+            ..HookInput::default()
         },
-        "/repo/dotfiles".to_owned(),
-        "/repo/dotfiles".to_owned(),
-        "/repo/dotfiles".to_owned(),
-        Some("main".to_owned()),
-        workspace,
-        DateTime::from_timestamp_millis(1_778_061_600_000).unwrap_or_else(Utc::now),
-        "bcde",
+        fixture_context(workspace, "bcde"),
     )
 }
 

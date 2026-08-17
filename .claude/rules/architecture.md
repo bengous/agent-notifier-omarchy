@@ -28,6 +28,7 @@ src/
 │   ├── build.rs    THE unified event builder (pure)
 │   ├── git.rs      git adapter (project root, repository key, branch)
 │   ├── id.rs       urandom adapter
+│   ├── session_title.rs  session-title lookup in agent session files (fs)
 │   └── agents/     one file per agent, data only (input fields, session_id chain, title source) — never assembly
 ├── window/         source window (existing / focused / live)
 │   ├── resolve.rs  pure core: ranking, workspace resolution from injected data

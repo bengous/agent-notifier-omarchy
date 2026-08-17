@@ -54,7 +54,7 @@ struct RolloutPayload {
     message: Option<String>,
 }
 
-pub(crate) fn claude_session_title(
+pub(in crate::intake) fn claude_session_title(
     transcript_path: &Path,
     session_id: Option<&str>,
 ) -> Option<String> {
@@ -62,13 +62,16 @@ pub(crate) fn claude_session_title(
     transcript_title(&raw, session_id)
 }
 
-pub(crate) fn codex_session_title(sessions_dir: &Path, session_id: &str) -> Option<String> {
+pub(in crate::intake) fn codex_session_title(
+    sessions_dir: &Path,
+    session_id: &str,
+) -> Option<String> {
     let rollout = find_rollout(sessions_dir, session_id)?;
     let raw = fs::read_to_string(rollout).ok()?;
     rollout_title(&raw)
 }
 
-pub(crate) fn codex_sessions_dir() -> Option<PathBuf> {
+pub(in crate::intake) fn codex_sessions_dir() -> Option<PathBuf> {
     let home = env::var_os("CODEX_HOME")
         .filter(|home| !home.is_empty())
         .map(PathBuf::from)

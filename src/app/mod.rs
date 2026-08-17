@@ -17,16 +17,11 @@ use crate::display::{
 use crate::event::store::{read_state_or_recover, state_path, with_state_update};
 use crate::event::{
     append_and_trim, clear_read_events, dedupe_events, empty_state, set_event_status,
-    set_window_address_read, state_has_unread_for_address, AgentEvent, AgentNotifierState,
+    set_window_address_read, state_has_unread_for_address, Agent, AgentEvent, AgentNotifierState,
     EventStatus, FocusOutcome, SourceWindow,
 };
 use crate::exec::{run_command, run_command_owned, DEFAULT_TIMEOUT};
-use crate::intake::pi_event::{build_pi_event, parse_pi_hook_input};
-use crate::intake::session_title;
-use crate::intake::stop_event::{
-    build_stop_event, current_git_branch, parse_stop_hook_input, project_root, random_hex,
-    repository_key, StopHookInput,
-};
+use crate::intake;
 use crate::window::hyprland;
 use crate::{STATUS_ERROR_CLASS, UNAVAILABLE_STATUS_JSON, UNAVAILABLE_STATUS_TOOLTIP};
 
@@ -156,16 +151,8 @@ fn should_capture_event(event: &AgentEvent) -> bool {
         .is_some_and(|workspace| workspace.client_address.is_some())
 }
 
-fn agent_display_name(agent: &str) -> &str {
-    match agent {
-        "pi" => "Pi",
-        "claude" => "Claude",
-        _ => "Codex",
-    }
-}
-
 fn notify(event: &AgentEvent) {
-    let agent_name = agent_display_name(&event.agent);
+    let agent_name = Agent::from_id(&event.agent).display_name();
     let _ = run_command_owned(
         &[
             "notify-send".to_owned(),
@@ -192,17 +179,6 @@ fn play_sound() {
         return;
     }
     let _ = run_command(&["canberra-gtk-play", "-f", &file], DEFAULT_TIMEOUT);
-}
-
-fn fallback_cwd() -> String {
-    env::var("PWD")
-        .ok()
-        .or_else(|| {
-            env::current_dir()
-                .ok()
-                .map(|path| path.to_string_lossy().into_owned())
-        })
-        .unwrap_or_else(|| ".".to_owned())
 }
 
 fn capture_completion_event(event: &AgentEvent, now: DateTime<Utc>) -> io::Result<()> {
@@ -244,69 +220,11 @@ fn resolve_source_window() -> Option<SourceWindow> {
     hyprland::current_source_window().or(first)
 }
 
-fn hook_session_id(event: &AgentEvent) -> Option<&str> {
-    Some(event.session_id.as_str()).filter(|id| !id.is_empty() && *id != "unknown")
-}
-
-fn resolve_session_title(
-    agent: &str,
-    input: &StopHookInput,
-    session_id: Option<&str>,
-) -> Option<String> {
-    if agent == "claude" {
-        let transcript_path = input.transcript_path.as_deref()?;
-        return session_title::claude_session_title(Path::new(transcript_path), session_id);
-    }
-    session_title::codex_session_title(&session_title::codex_sessions_dir()?, session_id?)
-}
-
-fn handle_hook(agent: &str) -> io::Result<()> {
+fn handle_agent_hook(agent: Agent) -> io::Result<()> {
     let mut raw = String::new();
     io::stdin().read_to_string(&mut raw)?;
-    let input = parse_stop_hook_input(&raw);
-    let cwd = input.cwd.clone().unwrap_or_else(fallback_cwd);
     let now = Utc::now();
-    let project_path = project_root(&cwd);
-    let project_key = repository_key(&cwd, &project_path);
-    let branch_name = current_git_branch(&project_path);
-    let event = build_stop_event(
-        agent,
-        &input,
-        cwd.clone(),
-        project_path,
-        project_key,
-        branch_name,
-        resolve_source_window(),
-        now,
-        &random_hex(4),
-    );
-    let session_title = resolve_session_title(agent, &input, hook_session_id(&event));
-    let event = AgentEvent {
-        session_title,
-        ..event
-    };
-    capture_completion_event(&event, now)
-}
-
-fn handle_pi_hook() -> io::Result<()> {
-    let mut raw = String::new();
-    io::stdin().read_to_string(&mut raw)?;
-    let input = parse_pi_hook_input(&raw);
-    let cwd = input.cwd.clone().unwrap_or_else(fallback_cwd);
-    let now = Utc::now();
-    let project_path = project_root(&cwd);
-    let project_key = repository_key(&cwd, &project_path);
-    let branch_name = current_git_branch(&project_path);
-    let event = build_pi_event(
-        &input,
-        cwd.clone(),
-        project_path,
-        project_key,
-        branch_name,
-        resolve_source_window(),
-        now,
-        &random_hex(4),
-    );
+    let event = intake::capture(agent, &raw, resolve_source_window(), now);
     capture_completion_event(&event, now)
 }
 
@@ -448,9 +366,9 @@ pub(crate) fn run() -> io::Result<i32> {
             println!("agent-notifier {}", env!("CARGO_PKG_VERSION"));
             Ok(0)
         }
-        CliCommand::Hook => handle_hook("codex").map(|()| 0),
-        CliCommand::PiHook => handle_pi_hook().map(|()| 0),
-        CliCommand::ClaudeHook => handle_hook("claude").map(|()| 0),
+        CliCommand::Hook => handle_agent_hook(Agent::Codex).map(|()| 0),
+        CliCommand::PiHook => handle_agent_hook(Agent::Pi).map(|()| 0),
+        CliCommand::ClaudeHook => handle_agent_hook(Agent::Claude).map(|()| 0),
         CliCommand::StatusJson => handle_status_json().map(|()| 0),
         // TODO(contract): no known consumer — retire or test before v1.
         CliCommand::ListJson => {

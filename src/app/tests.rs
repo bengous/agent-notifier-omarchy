@@ -44,11 +44,6 @@ fn the_build_script_always_supplies_commit_metadata() {
 }
 
 #[test]
-fn a_claude_event_displays_as_claude() {
-    assert_eq!(agent_display_name("claude"), "Claude");
-}
-
-#[test]
 fn unavailable_status_output_is_visible() {
     let output = unavailable_status_output();
     assert_eq!(output.text, "agents !");
