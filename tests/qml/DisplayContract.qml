@@ -15,11 +15,17 @@ QtObject {
     "displayProject"
   ]
 
+  // The QML mirror of the Rust half:
+  // the_setup_summary_exposes_exactly_the_keys_the_widget_reads.
+  readonly property var setupKeys: ["ready", "listenerLive", "harnesses"]
+  readonly property var setupRowKeys: ["harness", "displayName", "state"]
+
   property var state: ({})
 
   readonly property bool eventsIsArray: Array.isArray(root.state.events)
   readonly property var rows: root.eventsIsArray ? root.state.events.map(root.project) : []
   readonly property var sections: root.rows.map(function (row) { return row.displayProject })
+  readonly property var setup: root.state.setup
 
   function apply(raw) {
     root.state = JSON.parse(String(raw || ""))

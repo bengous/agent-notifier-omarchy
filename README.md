@@ -71,12 +71,12 @@ and `/usr/local/share/agent-notifier` after `install.sh`), the state directory
   clicking a row runs `focus-id`, and the popup buttons run `clear-read` and
   `clear-all`.
 - `widget/components/` — one component per file: CLI process plumbing, event row,
-  project section header, footer button, version block.
+  project section header, footer button, version block, setup card and its rows.
 - `widget/Theme.qml` + `widget/qmldir` — the widget's local tokens (per-agent
   brand colors, animation and refresh timings) as a QML singleton; sizes and
   typography come from omarchy's `Style.*`.
-- `widget/js/time.js` — relative/absolute time formatting, tested from
-  `tests/qml/`.
+- `widget/js/` — shared JS, one file per concept: `time.js` formats moments,
+  `setup.js` coerces the setup summary. Both are tested from `tests/qml/`.
 
 Prefer a plain bar module over the plugin? `agent-notifier status-json` emits
 `{"text","tooltip","class"}` for a `"type": "command"` entry in your
@@ -225,6 +225,14 @@ it, focusing a window by hand does not mark its events read.
 
 For every fixable state, `doctor` prints the exact block to paste: the same
 blocks as [Hook wiring](#hook-wiring), byte for byte.
+
+The widget mirrors this report. With the binary missing, it stays in the bar
+with an urgent `!` badge, and its popup card explains the state and re-checks
+every 15 seconds. With the binary present but the setup not ready, the card
+lists every harness state, and its "Show setup steps" button runs
+`agent-notifier doctor` in a floating terminal. The bar tooltip follows the
+class ladder: unread completions, then `Setup required — run: agent-notifier
+doctor`, then `Waiting for agent completions`.
 
 ## State
 

@@ -1,11 +1,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "."
 import "components"
+import "js/setup.js" as Setup
 import "js/time.js" as Time
 
 BarWidget {
@@ -13,6 +15,7 @@ BarWidget {
   moduleName: "io.github.bengous.agent-notifier"
 
   property var events: []
+  property var setup: null
   property var versionInfo: null
   property bool cliMissing: false
   property bool popupOpen: false
@@ -25,6 +28,13 @@ BarWidget {
   onPopupOpenChanged: if (popupOpen) refresh()
 
   readonly property int unreadCount: events.filter(event => String(event.status) === "unread").length
+  readonly property bool needsSetup: cliMissing || (setup !== null && setup.ready === false)
+
+  // The popup shows exactly one of these faces; the list always wins.
+  readonly property string face: events.length > 0 ? "list"
+    : cliMissing ? "binary-missing"
+    : needsSetup ? "setup"
+    : "waiting"
 
   readonly property string tooltipLines: {
     var lines = events
@@ -32,7 +42,8 @@ BarWidget {
       .map(event => String(event.displayLabel || "") + " " + Time.absoluteTime(event.createdAt))
     if (lines.length > 0) return lines.join("\n")
     if (cliMissing) return "agent-notifier is not on PATH. Install it first: README, section Install."
-    return "No agent completions"
+    if (needsSetup) return "Setup required — run: agent-notifier doctor"
+    return "Waiting for agent completions"
   }
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -57,6 +68,7 @@ BarWidget {
       return
     }
     root.events = parsed && Array.isArray(parsed.events) ? parsed.events : []
+    root.setup = parsed ? Setup.coerce(parsed.setup) : null
   }
 
   // Silent on failure: the fallback tooltip text is the user-facing signal,
@@ -97,6 +109,12 @@ BarWidget {
     if (id === "") return
     enqueue(["focus-id", id])
     close()
+  }
+
+  // The helper joins its arguments into one command and keeps the terminal
+  // open through omarchy-show-done, so doctor needs no wrapper script.
+  function launchSetupHelp() {
+    Quickshell.execDetached(["omarchy-launch-floating-terminal-with-presentation", "agent-notifier", "doctor"])
   }
 
   implicitWidth: button.implicitWidth
@@ -186,7 +204,7 @@ BarWidget {
 
     BorderSurface {
       id: badge
-      visible: root.unreadCount > 0 || root.cliMissing
+      visible: root.unreadCount > 0 || root.needsSetup
       anchors.right: parent.right
       anchors.top: parent.top
       anchors.rightMargin: Math.max(0, (button.width - Style.bar.iconCanvas) / 2 - Style.space(3))
@@ -259,7 +277,7 @@ BarWidget {
         id: eventList
         Layout.fillWidth: true
         Layout.fillHeight: true
-        visible: root.events.length > 0
+        visible: root.face === "list"
         clip: true
         spacing: Style.space(4)
         model: root.events
@@ -283,22 +301,24 @@ BarWidget {
 
       SetupCard {
         Layout.fillWidth: true
-        visible: root.events.length === 0 && root.cliMissing
+        visible: root.face === "binary-missing" || root.face === "setup"
         foreground: root.foreground
         dim: root.dim
         urgent: root.urgent
         fontFamily: root.fontFamily
         cliMissing: root.cliMissing
+        setup: root.setup
+        onSetupHelpRequested: root.launchSetupHelp()
       }
 
       Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
-        visible: root.events.length === 0 && !root.cliMissing
+        visible: root.face === "waiting"
 
         Text {
           anchors.centerIn: parent
-          text: "No agent completions"
+          text: "Waiting for agent completions"
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
