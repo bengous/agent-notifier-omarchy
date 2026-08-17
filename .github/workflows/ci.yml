@@ -32,6 +32,14 @@ jobs:
       - run: sudo apt-get install -y qt6-declarative-dev-tools qml6-module-qtquick qml6-module-qttest
       - run: tests/qml/run.sh
 
+  qml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update
+      - run: sudo apt-get install -y qt6-declarative-dev-tools qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts
+      - run: scripts/check-qml
+
   modules:
     runs-on: ubuntu-latest
     steps:

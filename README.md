@@ -242,11 +242,16 @@ before a commit:
 |---|---|---|
 | Rust format, lints, tests | `scripts/check` | CI |
 | Module graph | `scripts/check-modules` | CI |
+| QML lint | `scripts/check-qml` | CI |
 | Widget contract | `tests/qml/run.sh` | CI |
 | Widget visual | `tests/widget-harness/run.sh` | Locally only |
 
 The CI runs these same scripts, so a green `scripts/check-all` is a green CI.
-`scripts/check-modules` needs `cargo install cargo-modules --locked`.
+`scripts/check-modules` needs `cargo install cargo-modules --locked`;
+`scripts/check-qml` needs the Qt 6 `qmllint` and takes a `QMLLINT` override.
+It reports neither the unresolvable `qs.*` imports of omarchy nor what they
+make unresolvable, because omarchy and quickshell install on neither the CI
+runner nor a plain checkout.
 
 `tests/qml/run.sh` projects an `events.json` v1 fixture through the real
 `list-display-json` and runs the QML tests of `tests/qml/` against that output.

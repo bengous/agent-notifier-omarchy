@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# The QML gate: qmllint over the widget, its components and the theme.
+set -euo pipefail
+
+REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+fail() {
+  echo "agent-notifier: $1" >&2
+  exit 1
+}
+
+# Never the bare name on PATH: on Arch that is Qt 5's linter, which reports
+# itself as "qmllint 1.0" and knows none of the categories below.
+linter="${QMLLINT:-/usr/lib/qt6/bin/qmllint}"
+[[ -x ${linter} ]] || linter="$(command -v qmllint6 || true)"
+[[ -x ${linter} ]] || fail "the Qt 6 qmllint is missing; install qt6-declarative on Arch, qt6-declarative-dev-tools on Debian and Ubuntu"
+
+# qmllint resolves neither Quickshell's own modules nor omarchy's qs.* shell,
+# and neither is installable on the CI runner. Every warning these categories
+# carry follows from that: an unresolved base type turns each property into an
+# override and each omarchy symbol into an unqualified access, and BarWidget's
+# root element resolves to this very file. Disabled, qmllint still judges what
+# it does resolve — syntax, and every QtQuick type the widget touches.
+UNRESOLVABLE_IMPORTS=(
+  --import disable
+  --inheritance-cycle disable
+  --unresolved-type disable
+  --unqualified disable
+  --property-override disable
+  --signal-handler-parameters disable
+)
+
+# The qmldir and the `import "."` of the widget resolve against the working
+# directory, and qmllint files a warning under a different category when they
+# do not; -W turns the warnings it keeps into a gate, which they are not by
+# default.
+cd -- "${REPO_DIR}"
+"${linter}" "${UNRESOLVABLE_IMPORTS[@]}" -W 0 BarWidget.qml Theme.qml components/*.qml
