@@ -8,6 +8,7 @@ GATES=(
   scripts/check
   scripts/check-modules
   scripts/check-qml
+  scripts/check-shell
   tests/qml/run.sh
 )
 

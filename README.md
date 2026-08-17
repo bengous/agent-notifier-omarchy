@@ -244,6 +244,7 @@ before a commit:
 | Rust format, lints, tests | `scripts/check` | CI |
 | Module graph | `scripts/check-modules` | CI |
 | QML lint | `scripts/check-qml` | CI |
+| Shell lint | `scripts/check-shell` | CI |
 | Widget contract | `tests/qml/run.sh` | CI |
 | Widget visual | `tests/widget-harness/run.sh` | Locally only |
 

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# The shell gate: strict shellcheck over every tracked shell script.
+set -euo pipefail
+
+REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+fail() {
+  echo "agent-notifier: $1" >&2
+  exit 1
+}
+
+command -v shellcheck >/dev/null ||
+  fail "shellcheck is missing; install the shellcheck package"
+
+# git ls-files, not a worktree glob: the worktree can hold scripts the CI
+# checkout never sees, and the gate must judge the same files locally and
+# in CI.
+cd -- "${REPO_DIR}"
+tracked="$(git ls-files -- install.sh 'scripts/*' 'tests/*.sh')"
+mapfile -t files <<<"${tracked}"
+shellcheck --enable=all --severity=style "${files[@]}"
