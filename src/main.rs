@@ -3,6 +3,8 @@ mod display;
 mod event;
 mod exec;
 mod intake;
+#[cfg(test)]
+mod test_fixtures;
 mod window;
 
 use app::cli::CliCommand;

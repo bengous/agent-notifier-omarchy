@@ -246,3 +246,6 @@ pub(crate) fn dedupe_events(events: Vec<AgentEvent>) -> Vec<AgentEvent> {
     }
     deduped
 }
+
+#[cfg(test)]
+mod tests;

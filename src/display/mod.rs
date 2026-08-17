@@ -248,19 +248,4 @@ pub(crate) fn display_state_from_events(version: u8, events: Vec<AgentEvent>) ->
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn strips_any_leading_spinner_glyph() {
-        // U+28F8 is not in the historical blocklist.
-        assert_eq!(clean_window_title("⣸ building"), "building");
-        assert_eq!(clean_window_title("\u{28f8} building"), "building");
-        assert_eq!(clean_window_title("◑ building"), "building");
-        assert_eq!(clean_window_title("◜ building"), "building");
-        assert_eq!(clean_window_title("◷ building"), "building");
-        assert_eq!(clean_window_title("✻ building"), "building");
-        assert_eq!(clean_window_title("  plain title  "), "plain title");
-        assert_eq!(clean_window_title("~/dotfiles"), "~/dotfiles");
-    }
-}
+mod tests;

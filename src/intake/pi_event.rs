@@ -72,3 +72,6 @@ pub(crate) fn build_pi_event(
         extra: serde_json::Map::new(),
     }
 }
+
+#[cfg(test)]
+mod tests;
