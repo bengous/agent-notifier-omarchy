@@ -256,9 +256,13 @@ tests/widget-harness/run.sh --keep   # leave it up to drive by hand
 tests/widget-harness/stop.sh
 ```
 
-The screenshot lands in `target/widget-harness/popup.png` and covers the whole
-nested output, whose size follows the window the host compositor hands it. The
-running shell is never touched: the state goes to a temporary `XDG_STATE_HOME`,
+The screenshot lands in `target/widget-harness/popup.png`. The harness runs in a
+window on the session that starts it, and floats that window at a fixed size so
+the session's layout stays put. Keep it visible: a hidden or fullscreen-covered
+harness window stops the nested compositor from rendering, and the run then
+fails on the capture.
+
+The running shell is never touched: the state goes to a temporary `XDG_STATE_HOME`,
 quickshell is only ever addressed by `--pid`, and the run brings its own
 `notify-send`. It needs `foot`, `grim` and `jq`.
 

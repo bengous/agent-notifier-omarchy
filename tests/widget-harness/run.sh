@@ -9,6 +9,11 @@ HARNESS_DIR="${REPO_DIR}/tests/widget-harness"
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 RUN_DIR="${RUNTIME_DIR}/agent-notifier-widget-harness"
 OMARCHY_SHELL_DIR=/usr/share/omarchy/shell
+HOST_INSTANCE="${HYPRLAND_INSTANCE_SIGNATURE:-}"
+NESTED_WIDTH=1280
+NESTED_HEIGHT=800
+NESTED_MARGIN=60
+CAPTURE_TIMEOUT_SECONDS=15
 INJECTOR_CLASS="agent-notifier-injector"
 # An agent with no session title falls back to its window title, so the
 # injector's title is what those rows read on the screenshot.
@@ -175,7 +180,8 @@ env -u HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY="${host_display}" \
   AQ_DRM_DEVICES=/dev/null \
   HYPRLAND_NO_SD_NOTIFY=1 HYPRLAND_NO_SD_VARS=1 HYPRLAND_NO_CRASHREPORTER=1 \
   Hyprland -c "${HARNESS_DIR}/hypr-test.conf" >"${RUN_DIR}/hyprland.log" 2>&1 &
-echo $! >"${RUN_DIR}/hyprland.pid"
+hyprland_pid=$!
+echo "${hyprland_pid}" >"${RUN_DIR}/hyprland.pid"
 
 find_instance() {
   local path known
@@ -190,6 +196,37 @@ find_instance() {
   return 1
 }
 wait_for "the nested compositor" 30 find_instance
+
+# The nested compositor is a window on the session that started it. Tiled, it
+# reflows the user's layout on open and again on close; floating it at a fixed
+# size leaves the session alone and gives every run the same frame. The only
+# window the harness ever touches out there is the one it just opened.
+host_window_address() {
+  local clients
+  clients=$(env HYPRLAND_INSTANCE_SIGNATURE="${HOST_INSTANCE}" hyprctl -j clients)
+  jq -er --argjson pid "${hyprland_pid}" 'map(select(.pid == $pid)) | .[0].address' <<<"${clients}"
+}
+host_window_exists() { host_window_address >/dev/null 2>&1; }
+
+# The host is Omarchy's Hyprland: its `hyprctl dispatch` is a Lua shorthand
+# for hl.dispatch(...), so classic dispatcher syntax fails with a parse error.
+float_host_window() {
+  local address
+  address=$(host_window_address)
+  for command in \
+    "hl.dsp.window.float({ action = \"on\", window = \"address:${address}\" })" \
+    "hl.dsp.window.resize({ x = ${NESTED_WIDTH}, y = ${NESTED_HEIGHT}, window = \"address:${address}\" })" \
+    "hl.dsp.window.move({ x = ${NESTED_MARGIN}, y = ${NESTED_MARGIN}, window = \"address:${address}\" })"; do
+    env HYPRLAND_INSTANCE_SIGNATURE="${HOST_INSTANCE}" \
+      hyprctl dispatch "${command}" >/dev/null
+  done
+}
+
+if [[ -n ${HOST_INSTANCE} ]]; then
+  wait_for "the nested compositor window" 30 host_window_exists
+  float_host_window
+fi
+
 HYPRLAND_INSTANCE_SIGNATURE="$(<"${RUN_DIR}/instance")"
 export HYPRLAND_INSTANCE_SIGNATURE
 
@@ -287,8 +324,13 @@ hyprctl dismissnotify >/dev/null
 # end: nothing here polls, the wait is the animation itself.
 sleep 0.5
 
-# grim rejects -o together with -g.
-env WAYLAND_DISPLAY="${nested_display}" grim -o "${monitor}" "${screenshot}"
+# grim rejects -o together with -g. It also waits for a frame that never comes
+# when the harness window is hidden or covered: the nested compositor gets no
+# frame callback from the host and stops rendering, so the wait is bounded.
+if ! timeout "${CAPTURE_TIMEOUT_SECONDS}" \
+  env WAYLAND_DISPLAY="${nested_display}" grim -o "${monitor}" "${screenshot}"; then
+  fail "no frame from ${monitor} in ${CAPTURE_TIMEOUT_SECONDS}s; the harness window is hidden or covered by a fullscreen window"
+fi
 [[ -s ${screenshot} ]] || fail "grim wrote no screenshot"
 screenshot_bytes=$(stat -c %s -- "${screenshot}")
 ((screenshot_bytes > MINIMUM_SCREENSHOT_BYTES)) || fail "the screenshot is empty"
