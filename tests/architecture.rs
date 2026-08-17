@@ -153,6 +153,46 @@ fn no_recorded_debt_contradicts_an_allowed_edge() {
     );
 }
 
+/// `cargo modules dependencies --acyclic` cannot answer this for us: it reads
+/// an inherent constructor returning `Self` as a cycle with its own type, and
+/// no filter flag removes that pair from the check (cargo-modules 0.27).
+#[test]
+fn the_allowed_edges_never_form_a_cycle() {
+    let looping = ALLOWED
+        .iter()
+        .filter(|(from, _)| reaches(from, from))
+        .map(|(from, to)| format!("{from} -> {to}"))
+        .collect::<Vec<_>>();
+
+    assert!(
+        looping.is_empty(),
+        "these allowed edges close a cycle: {}",
+        looping.join(", ")
+    );
+}
+
+fn reaches(from: &str, target: &str) -> bool {
+    let mut seen = BTreeSet::new();
+    let mut pending = successors(from);
+    while let Some(node) = pending.pop() {
+        if node == target {
+            return true;
+        }
+        if seen.insert(node) {
+            pending.extend(successors(node));
+        }
+    }
+    false
+}
+
+fn successors(node: &str) -> Vec<&'static str> {
+    ALLOWED
+        .iter()
+        .filter(|(source, _)| *source == node)
+        .map(|(_, destination)| *destination)
+        .collect()
+}
+
 fn is_violation(from: &str, to: &str) -> bool {
     if WATCHED_EXTERNAL.contains(&to) {
         return FORBIDDEN_EXTERNAL.contains(&(from, to));
