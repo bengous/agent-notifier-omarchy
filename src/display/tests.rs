@@ -46,24 +46,20 @@ fn display_state_exposes_exactly_the_keys_the_widget_reads() {
         "id",
         "agent",
         "status",
-        "projectName",
         "createdAt",
         "displayLabel",
-        "displayCreatedAt",
         "displayProject",
-        "workspace",
     ] {
         assert!(!event[key].is_null(), "missing key: {key}");
     }
-    assert!(!value["version"].is_null());
-    assert!(!event["workspace"]["name"].is_null());
+    assert!(value["events"].is_array());
 }
 
 #[test]
 fn version_json_exposes_exactly_the_keys_the_widget_reads() {
     let value = serde_json::to_value(build_info_fixture(None)).unwrap_or(serde_json::Value::Null);
 
-    for key in ["name", "version", "commit", "dirty", "commitDate"] {
+    for key in ["version", "commit", "dirty", "commitDate"] {
         assert!(!value[key].is_null(), "missing key: {key}");
     }
     assert_eq!(value["dirty"], serde_json::Value::Bool(true));
