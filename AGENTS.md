@@ -27,6 +27,12 @@ One concept, one name — in code, docs, and tests:
 - Pre-v1: breaking changes are allowed; update the README in the same commit. No compat shims — fail with a clear error.
 - `TODO(contract):` marks a documented command with no known consumer: retire or test it before v1.
 
+## Gates
+
+- `scripts/check-all` runs every gate the CI runs — the one command before a commit. Per-gate commands and tool needs: README §Tests.
+- One Rust test: `cargo test <test_name>`; one module: `cargo test <module>::`.
+- Widget visual check (local only, never CI): `tests/widget-harness/run.sh`.
+
 ## Style
 
 - Comments: only irreplaceable "why" (external constraint, workaround, contract policy). No paraphrase, no history. A comment describing observable behavior becomes a test or cites its source.
