@@ -39,6 +39,10 @@ pub(crate) struct BuildInfo {
     pub(crate) dirty: bool,
     #[serde(rename = "commitDate")]
     pub(crate) commit_date: String,
+    /// The binary owns the state path: a consumer reads it here instead of
+    /// deriving its own from the environment.
+    #[serde(rename = "statePath", skip_serializing_if = "Option::is_none")]
+    pub(crate) state_path: Option<String>,
 }
 
 pub(crate) fn build_info(
@@ -47,6 +51,7 @@ pub(crate) fn build_info(
     commit: &str,
     dirty: &str,
     commit_date: &str,
+    state_path: Option<&Path>,
 ) -> BuildInfo {
     BuildInfo {
         name: name.to_owned(),
@@ -54,6 +59,7 @@ pub(crate) fn build_info(
         commit: commit.to_owned(),
         dirty: dirty == "true",
         commit_date: commit_date.to_owned(),
+        state_path: state_path.map(|path| path.to_string_lossy().into_owned()),
     }
 }
 

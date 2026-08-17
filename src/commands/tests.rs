@@ -200,16 +200,20 @@ fn display_state_exposes_exactly_the_keys_the_widget_reads() {
     assert!(!event["workspace"]["name"].is_null());
 }
 
-#[test]
-fn version_json_exposes_exactly_the_keys_the_widget_reads() {
-    let info = presentation::build_info(
+fn build_info_fixture(state_path: Option<&Path>) -> presentation::BuildInfo {
+    presentation::build_info(
         "agent-notifier",
         "0.3.0",
         "abc1234",
         "true",
         "2026-08-16T10:00:00+00:00",
-    );
-    let value = serde_json::to_value(&info).unwrap_or(serde_json::Value::Null);
+        state_path,
+    )
+}
+
+#[test]
+fn version_json_exposes_exactly_the_keys_the_widget_reads() {
+    let value = serde_json::to_value(build_info_fixture(None)).unwrap_or(serde_json::Value::Null);
 
     for key in ["name", "version", "commit", "dirty", "commitDate"] {
         assert!(!value[key].is_null(), "missing key: {key}");
@@ -218,15 +222,38 @@ fn version_json_exposes_exactly_the_keys_the_widget_reads() {
 }
 
 #[test]
+fn a_state_path_serializes_additively() -> Result<(), Box<dyn std::error::Error>> {
+    let path = Path::new("/state/agent-notifier/events.json");
+    let with_path = serde_json::to_value(build_info_fixture(Some(path)))?;
+    let mut v1 = serde_json::to_value(build_info_fixture(None))?;
+
+    assert_eq!(with_path["statePath"], "/state/agent-notifier/events.json");
+    v1["statePath"] = with_path["statePath"].clone();
+    assert_eq!(with_path, v1);
+    Ok(())
+}
+
+#[test]
+fn version_json_without_a_state_path_keeps_the_v1_keys() -> Result<(), Box<dyn std::error::Error>> {
+    let value = serde_json::to_value(build_info_fixture(None))?;
+    let object = value.as_object().ok_or("version-json is not an object")?;
+    let mut keys = object.keys().map(String::as_str).collect::<Vec<_>>();
+    keys.sort_unstable();
+
+    assert_eq!(keys, ["commit", "commitDate", "dirty", "name", "version"]);
+    Ok(())
+}
+
+#[test]
 fn build_info_reports_dirty_only_when_the_tree_is_modified() {
-    let dirty = |flag: &str| presentation::build_info("n", "v", "c", flag, "d").dirty;
+    let dirty = |flag: &str| presentation::build_info("n", "v", "c", flag, "d", None).dirty;
 
     assert!(dirty("true"));
     assert!(!dirty("false"));
     assert!(!dirty(""));
     assert!(!dirty("garbage"));
 
-    let fallback = presentation::build_info("n", "v", "unknown", "false", "unknown");
+    let fallback = presentation::build_info("n", "v", "unknown", "false", "unknown", None);
     assert_eq!(fallback.commit, "unknown");
     assert_eq!(fallback.commit_date, "unknown");
 }

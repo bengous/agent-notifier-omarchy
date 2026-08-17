@@ -394,12 +394,14 @@ fn print_json<T: Serialize>(value: &T) {
 }
 
 fn crate_build_info() -> BuildInfo {
+    let state_path = state_path().ok();
     build_info(
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION"),
         env!("AGENT_NOTIFIER_COMMIT"),
         env!("AGENT_NOTIFIER_DIRTY"),
         env!("AGENT_NOTIFIER_COMMIT_DATE"),
+        state_path.as_deref(),
     )
 }
 

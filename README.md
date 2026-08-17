@@ -151,7 +151,7 @@ your shell `PATH`.
 | `hook`, `claude-hook`, `pi-hook` | Capture a completion from stdin |
 | `status-json` | Print `{"text","tooltip","class"}` for the bar widget; `class` is `empty` or `unread` |
 | `list-display-json` | Print the focusable events the widget renders |
-| `version-json` | Print build metadata: `{"name","version","commit","dirty","commitDate"}` |
+| `version-json` | Print build metadata: `{"name","version","commit","dirty","commitDate","statePath"}` |
 | `focus-id <event-id>` | Focus one event and mark it read |
 | `mark-read <event-id>` | Mark one event read |
 | `watch-focused-window` | Mark the focused window's events read, as a long-running listener |
@@ -187,6 +187,10 @@ The fallback is `$HOME/.local/state/agent-notifier/events.json`. Writes are
 atomic and hold an advisory lock. Invalid state is renamed to
 `events.json.corrupt-<timestamp>` and treated as empty. At most 50 events are
 kept.
+
+The binary owns this path: `version-json` reports the one it resolved as
+`statePath`, and `statePath` is absent when neither `XDG_STATE_HOME` nor `HOME`
+is set. Ask for it instead of deriving a second path from the environment.
 
 `events.json` is an internal format. Read the state through `status-json` and
 `list-display-json` instead.
