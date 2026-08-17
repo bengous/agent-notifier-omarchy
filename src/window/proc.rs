@@ -1,4 +1,6 @@
+use std::ffi::OsStr;
 use std::fs;
+use std::path::Path;
 use std::str::FromStr;
 
 use crate::event::ProcessRef;
@@ -18,6 +20,31 @@ pub(crate) fn process_ref(pid: i64) -> Option<ProcessRef> {
 
 pub(crate) fn process_is_alive(process: &ProcessRef) -> bool {
     proc_stat_field(process.pid, START_TIME_FIELD) == Some(process.start_time)
+}
+
+pub(crate) fn listener_is_live() -> bool {
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        fs::read(entry.path().join("cmdline")).is_ok_and(|raw| {
+            let argv = raw
+                .split(|byte| *byte == 0)
+                .filter(|part| !part.is_empty())
+                .map(String::from_utf8_lossy)
+                .collect::<Vec<_>>();
+            cmdline_is_listener(&argv.iter().map(AsRef::as_ref).collect::<Vec<&str>>())
+        })
+    })
+}
+
+fn cmdline_is_listener(argv: &[&str]) -> bool {
+    match argv {
+        [program, "watch-focused-window"] => {
+            Path::new(program).file_name() == Some(OsStr::new("agent-notifier"))
+        }
+        _ => false,
+    }
 }
 
 pub(in crate::window) fn current_parent_pid() -> i64 {

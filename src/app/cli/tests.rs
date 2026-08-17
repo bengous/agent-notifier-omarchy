@@ -28,6 +28,14 @@ fn parses_commands_with_event_id() {
 }
 
 #[test]
+fn parses_doctor_and_its_json_flag() {
+    assert_eq!(parse(&["doctor"]), CliCommand::Doctor);
+    assert_eq!(parse(&["doctor", "--json"]), CliCommand::DoctorJson);
+    assert_eq!(parse(&["doctor", "bogus"]), CliCommand::Unknown);
+    assert_eq!(parse(&["doctor", "--json", "extra"]), CliCommand::Unknown);
+}
+
+#[test]
 fn parses_help_and_version() {
     assert_eq!(parse(&["--help"]), CliCommand::Help);
     assert_eq!(parse(&["-h"]), CliCommand::Help);

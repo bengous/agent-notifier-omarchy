@@ -13,7 +13,7 @@ use syn::visit::Visit;
 
 /// The concept folders of `src/`. A top-level file is its own concept.
 const CONCEPTS: &[&str] = &[
-    "alert", "app", "display", "event", "exec", "intake", "window",
+    "alert", "app", "display", "event", "exec", "intake", "setup", "window",
 ];
 
 /// Top-level files that are not concept folders. `main` is the crate root, so
@@ -37,11 +37,14 @@ const ALLOWED: &[(&str, &str)] = &[
     ("app", "intake"),
     ("app", "window"),
     ("app", "alert"),
+    ("app", "setup"),
     ("intake", "event"),
     ("intake", "exec"),
     ("window", "event"),
     ("window", "exec"),
     ("display", "event"),
+    ("display", "setup"),
+    ("setup", "event"),
     ("alert", "exec"),
 ];
 

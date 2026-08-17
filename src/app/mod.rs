@@ -23,6 +23,7 @@ Commands:
   status-json              Print bar-widget status JSON
   list-display-json        Print focusable events as display JSON
   version-json             Print build metadata as JSON
+  doctor [--json]          Diagnose the harness wiring
   focus-id <event-id>      Focus an event by id
   mark-read <event-id>     Mark an event as read
   watch-focused-window     Watch focused-window changes
@@ -53,6 +54,11 @@ pub(crate) fn run(command: &CliCommand, deps: &dyn Deps) -> io::Result<i32> {
         CliCommand::ListJson => query::list_json(deps).map(|()| 0),
         CliCommand::ListDisplayJson => query::list_display_json(deps).map(|()| 0),
         CliCommand::VersionJson => query::version_json(deps).map(|()| 0),
+        CliCommand::Doctor => {
+            query::doctor(deps);
+            Ok(0)
+        }
+        CliCommand::DoctorJson => query::doctor_json(deps).map(|()| 0),
         // TODO(contract): no known consumer — retire or test before v1.
         CliCommand::FocusLatest => focus::focus_latest(deps),
         CliCommand::FocusId(id) => focus::focus_id(id, deps),

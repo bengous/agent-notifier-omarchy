@@ -125,21 +125,38 @@ In `~/.claude/settings.json`, merge this into `hooks`:
 
 ### Pi
 
-In `~/.pi/agent/extensions/agent-notifier.ts`, listen to main-agent `agent_end`
-and pipe the payload into `agent-notifier pi-hook`:
+Create `~/.pi/agent/extensions/agent-notifier.ts`. The extension listens to
+main-agent `agent_end` and pipes the payload into `agent-notifier pi-hook`:
 
 ```ts
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { spawn } from "node:child_process";
+
+const HOOK_COMMAND = "agent-notifier pi-hook";
+const HOOK_TIMEOUT_MS = 5_000;
+
 export default function (pi: ExtensionAPI) {
-  pi.on("agent_end", async (_event, ctx) => {
+  pi.on("agent_end", (_event, ctx) => {
     if (process.env.PI_SUBAGENT_CHILD === "1") return;
 
-    await notifyAgentCompletion({
-      cwd: ctx.cwd,
-      ...readSessionMetadata(ctx),
+    const [program, subcommand] = HOOK_COMMAND.split(" ");
+    const child = spawn(program, [subcommand], {
+      stdio: ["pipe", "ignore", "ignore"],
+      timeout: HOOK_TIMEOUT_MS,
     });
+    child.on("error", () => {});
+    child.stdin.on("error", () => {});
+    child.stdin.end(JSON.stringify({
+      cwd: ctx.cwd,
+      sessionFile: ctx.sessionManager.getSessionFile?.(),
+      leafId: ctx.sessionManager.getLeafId?.(),
+    }));
   });
 }
 ```
+
+Keep the `agent-notifier pi-hook` invocation as one literal string: `doctor`
+looks for that marker to judge the Pi wiring.
 
 ### Focused window listener
 
@@ -161,6 +178,7 @@ your shell `PATH`.
 | `status-json` | Print `{"text","tooltip","class"}` for the bar widget; `class` is `empty` or `unread` |
 | `list-display-json` | Print the focusable events the widget renders |
 | `version-json` | Print build metadata: `{"name","version","commit","dirty","commitDate","statePath"}` |
+| `doctor [--json]` | Print the setup diagnosis; see [Troubleshooting](#troubleshooting) |
 | `focus-id <event-id>` | Focus one event and mark it read |
 | `mark-read <event-id>` | Mark one event read |
 | `watch-focused-window` | Mark the focused window's events read, as a long-running listener |
@@ -185,6 +203,28 @@ alone, so an event stores three things:
 
 A click that lands on the best guess marks the event read. A click that falls
 back to another window leaves it unread: the source was not reached.
+
+## Troubleshooting
+
+`agent-notifier doctor` prints one state per harness plus two global lines,
+and always exits 0: a diagnosis is never a failure. `doctor --json` prints the
+same report as JSON.
+
+| State | Meaning |
+|---|---|
+| `wired` | The hook is in place and its command resolves |
+| `hook stale` | The config names a hook command that no longer resolves; the report names that command |
+| `hook absent` | The config exists without the agent-notifier hook |
+| `config absent` | The harness is on PATH but its config target is missing |
+| `not installed` | The harness binary is not on PATH |
+
+`binary on PATH: no` means the `agent-notifier` binary itself is missing:
+[Install](#install) covers it. `listener: not live` means the
+[focused window listener](#focused-window-listener) is not running; without
+it, focusing a window by hand does not mark its events read.
+
+For every fixable state, `doctor` prints the exact block to paste: the same
+blocks as [Hook wiring](#hook-wiring), byte for byte.
 
 ## State
 

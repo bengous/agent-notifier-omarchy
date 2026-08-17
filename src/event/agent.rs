@@ -13,6 +13,14 @@ impl Agent {
             Self::Pi => "Pi",
         }
     }
+
+    pub(crate) const fn id(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::Pi => "pi",
+        }
+    }
 }
 
 #[cfg(test)]

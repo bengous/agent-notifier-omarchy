@@ -36,6 +36,34 @@ fn an_unknown_process_ends_the_chain_and_yields_no_stat_field() {
 }
 
 #[test]
+fn a_watch_focused_window_cmdline_is_a_listener() {
+    assert!(cmdline_is_listener(&[
+        "agent-notifier",
+        "watch-focused-window"
+    ]));
+    assert!(cmdline_is_listener(&[
+        "/usr/local/bin/agent-notifier",
+        "watch-focused-window"
+    ]));
+}
+
+#[test]
+fn any_other_cmdline_is_not_a_listener() {
+    assert!(!cmdline_is_listener(&["agent-notifier", "doctor"]));
+    assert!(!cmdline_is_listener(&[
+        "other-binary",
+        "watch-focused-window"
+    ]));
+    assert!(!cmdline_is_listener(&[
+        "agent-notifier",
+        "watch-focused-window",
+        "extra"
+    ]));
+    assert!(!cmdline_is_listener(&["agent-notifier"]));
+    assert!(!cmdline_is_listener(&[]));
+}
+
+#[test]
 fn a_stat_field_is_counted_after_the_command_name() -> Result<(), Box<dyn std::error::Error>> {
     let own_pid = i64::from(std::process::id());
 

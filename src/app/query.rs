@@ -7,6 +7,7 @@ use crate::display::{
 };
 use crate::event::store::{read_state, with_state_update};
 use crate::event::{focusable_events, mark_focused_window_events_read, AgentNotifierState};
+use crate::setup::doctor_report;
 
 pub(in crate::app) fn status_json(deps: &dyn Deps) -> io::Result<()> {
     let focused = deps.focused_window_address();
@@ -31,6 +32,14 @@ pub(in crate::app) fn list_json(deps: &dyn Deps) -> io::Result<()> {
 
 pub(in crate::app) fn version_json(deps: &dyn Deps) -> io::Result<()> {
     print_json(&build_metadata(deps), deps)
+}
+
+pub(in crate::app) fn doctor(deps: &dyn Deps) {
+    deps.print_line(&doctor_report(&deps.setup_probe()));
+}
+
+pub(in crate::app) fn doctor_json(deps: &dyn Deps) -> io::Result<()> {
+    print_json(&deps.setup_probe(), deps)
 }
 
 /// The read paths that mark: ADR 0001 makes reading the state the moment the

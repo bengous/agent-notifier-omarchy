@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use crate::alert;
 use crate::event::store::state_path;
 use crate::event::{AgentEvent, FocusOutcome, SourceLiveness, SourceWindow};
+use crate::setup::{gather_setup_probe, SetupReport};
 use crate::window::{hyprland, proc};
 
 /// Everything `run` needs from the world, so that a command is dispatched the
@@ -22,6 +23,7 @@ pub(crate) trait Deps {
     fn focus_event_source(&self, event: Option<&AgentEvent>) -> FocusOutcome;
     fn watch_focused_window(&self, on_change: &mut dyn FnMut(&str)) -> io::Result<()>;
     fn alert(&self, app_name: &str, title: &str, body: &str);
+    fn setup_probe(&self) -> SetupReport;
 }
 
 #[derive(Debug)]
@@ -78,5 +80,9 @@ impl Deps for SystemDeps {
 
     fn alert(&self, app_name: &str, title: &str, body: &str) {
         alert::alert(app_name, title, body);
+    }
+
+    fn setup_probe(&self) -> SetupReport {
+        gather_setup_probe(proc::listener_is_live())
     }
 }

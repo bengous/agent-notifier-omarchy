@@ -9,6 +9,8 @@ pub(crate) enum CliCommand {
     ListJson,
     ListDisplayJson,
     VersionJson,
+    Doctor,
+    DoctorJson,
     FocusLatest,
     FocusId(String),
     FocusIdMissing,
@@ -42,6 +44,13 @@ impl CliCommand {
             Some("list-json") => Self::ListJson,
             Some("list-display-json") => Self::ListDisplayJson,
             Some("version-json") => Self::VersionJson,
+            Some("doctor") => args.next().map_or(Self::Doctor, |flag| {
+                if flag == "--json" {
+                    Self::DoctorJson
+                } else {
+                    Self::Unknown
+                }
+            }),
             Some("focus-latest") => Self::FocusLatest,
             Some("focus-id") => args.next().map_or(Self::FocusIdMissing, Self::FocusId),
             Some("mark-read") => args.next().map_or(Self::MarkReadMissing, Self::MarkRead),

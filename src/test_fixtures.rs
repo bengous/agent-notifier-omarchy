@@ -14,6 +14,7 @@ use crate::event::{
 };
 use crate::intake::agents::profile;
 use crate::intake::build::{build_event, CaptureContext, HookInput};
+use crate::setup::{HarnessReport, HarnessState, SetupReport};
 
 pub(crate) fn fixture_clock() -> DateTime<Utc> {
     DateTime::UNIX_EPOCH + Duration::from_secs(1_778_061_600)
@@ -49,6 +50,63 @@ fn no_process_is_alive(_process: &ProcessRef) -> bool {
     false
 }
 
+pub(crate) fn probe_row(
+    agent: Agent,
+    state: HarnessState,
+    hook_command: Option<&str>,
+) -> HarnessReport {
+    let config_path = match agent {
+        Agent::Claude => "/repo/home/.claude/settings.json",
+        Agent::Codex => "/repo/home/.codex/config.toml",
+        Agent::Pi => "/repo/home/.pi/agent/extensions/agent-notifier.ts",
+    };
+    HarnessReport {
+        harness: agent.id().to_owned(),
+        display_name: agent.display_name().to_owned(),
+        state,
+        config_path: config_path.to_owned(),
+        hook_command: hook_command.map(str::to_owned),
+    }
+}
+
+pub(crate) fn nothing_installed_probe() -> SetupReport {
+    SetupReport {
+        version: 1,
+        binary_on_path: false,
+        listener_live: false,
+        harnesses: vec![
+            probe_row(Agent::Claude, HarnessState::HarnessAbsent, None),
+            probe_row(Agent::Codex, HarnessState::HarnessAbsent, None),
+            probe_row(Agent::Pi, HarnessState::HarnessAbsent, None),
+        ],
+    }
+}
+
+pub(crate) fn wired_probe() -> SetupReport {
+    SetupReport {
+        version: 1,
+        binary_on_path: true,
+        listener_live: true,
+        harnesses: vec![
+            probe_row(
+                Agent::Claude,
+                HarnessState::Wired,
+                Some("agent-notifier claude-hook"),
+            ),
+            probe_row(
+                Agent::Codex,
+                HarnessState::Wired,
+                Some("agent-notifier hook"),
+            ),
+            probe_row(
+                Agent::Pi,
+                HarnessState::Wired,
+                Some("agent-notifier pi-hook"),
+            ),
+        ],
+    }
+}
+
 /// The second adapter of the `Deps` seam: a world a test writes by hand, so
 /// `run` can be driven end to end without a compositor, a clock or a terminal.
 #[derive(Debug)]
@@ -64,6 +122,7 @@ pub(crate) struct FakeDeps {
     pub(crate) focused_window_changes: Vec<String>,
     pub(crate) printed_lines: RefCell<Vec<String>>,
     pub(crate) alerts: RefCell<Vec<[String; 3]>>,
+    pub(crate) setup_probe: SetupReport,
 }
 
 impl FakeDeps {
@@ -80,6 +139,7 @@ impl FakeDeps {
             focused_window_changes: Vec::new(),
             printed_lines: RefCell::new(Vec::new()),
             alerts: RefCell::new(Vec::new()),
+            setup_probe: nothing_installed_probe(),
         }
     }
 
@@ -161,6 +221,10 @@ impl Deps for FakeDeps {
         self.alerts
             .borrow_mut()
             .push([app_name.to_owned(), title.to_owned(), body.to_owned()]);
+    }
+
+    fn setup_probe(&self) -> SetupReport {
+        self.setup_probe.clone()
     }
 }
 

@@ -31,6 +31,10 @@ src/
 │   ├── id.rs       urandom adapter
 │   ├── session_title.rs  session-title lookup in agent session files (fs)
 │   └── agents/     one file per agent, data only (input fields, session_id chain, title source) — never assembly
+├── setup/          harness wiring diagnosis, read-only
+│   ├── state.rs    pure core: harness facts → five-step state ladder + readiness
+│   ├── probe.rs    fs/env adapter: PATH, hook configs, marker extraction (pure `_from` cores inline)
+│   └── render.rs   pure: the human doctor report; literals and paste blocks test-locked to the README
 ├── window/         source window (existing / focused / live)
 │   ├── resolve.rs  pure core: ranking, workspace resolution from injected data
 │   ├── hyprland.rs the entire frontier: hyprctl, socket, reconnection, focus — "active" appears verbatim only here
@@ -41,8 +45,8 @@ src/
 
 Import edges, enforced by `tests/architecture.rs`:
 
-- Allowed: main → app; app → every concept; {intake, window} → {event types, exec}; display → event; alert → exec; event → nothing.
-- Forbidden: event → anything; anything → app; intake ↔ window; alert → {event, display}; any pure core → exec; app → {exec, std::fs}.
+- Allowed: main → app; app → every concept; {intake, window} → {event types, exec}; {display, setup} → event; display → setup; alert → exec; event → nothing.
+- Forbidden: event → anything; anything → app; intake ↔ window; setup → window; alert → {event, display}; any pure core → exec; app → {exec, std::fs}.
 - Edges that still break these rules live in the `PLANNED_DEBT` list of `tests/architecture.rs`, each tagged with the deepening that removes it. The list only shrinks: a stale entry fails the test, a new one needs a reason.
 
 Guardrails:

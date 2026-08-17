@@ -2,7 +2,7 @@ use super::*;
 use crate::event::store::with_state_update;
 use crate::event::{append_and_trim, AgentEvent, EventStatus, FocusOutcome, SourceWindow};
 use crate::hook_failure_exit_code;
-use crate::test_fixtures::{event_with_address, workspace, FakeDeps};
+use crate::test_fixtures::{event_with_address, wired_probe, workspace, FakeDeps};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::error::Error;
@@ -242,6 +242,39 @@ fn version_json_prints_the_build_metadata_and_the_state_path() -> Result<(), Box
         info["statePath"],
         deps.state_path.to_string_lossy().as_ref()
     );
+    Ok(())
+}
+
+#[test]
+fn doctor_reports_success_even_when_nothing_is_wired() -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
+    let deps = fake(&dir);
+
+    assert_eq!(run(&CliCommand::Doctor, &deps)?, 0);
+
+    assert!(deps.printed().contains("binary on PATH: no"));
+    assert!(deps.printed().contains("Claude: not installed"));
+    Ok(())
+}
+
+#[test]
+fn doctor_json_prints_the_setup_report() -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
+    let deps = FakeDeps {
+        setup_probe: wired_probe(),
+        ..fake(&dir)
+    };
+
+    assert_eq!(run(&CliCommand::DoctorJson, &deps)?, 0);
+
+    let report = deps.printed_json()?;
+    assert_eq!(
+        sorted_keys(&report)?,
+        ["binaryOnPath", "harnesses", "listenerLive", "version"]
+    );
+    assert_eq!(report["version"], 1);
+    assert_eq!(report["harnesses"][0]["harness"], "claude");
+    assert_eq!(report["harnesses"][0]["state"], "wired");
     Ok(())
 }
 

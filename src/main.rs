@@ -4,6 +4,7 @@ mod display;
 mod event;
 mod exec;
 mod intake;
+mod setup;
 #[cfg(test)]
 mod test_fixtures;
 mod window;
