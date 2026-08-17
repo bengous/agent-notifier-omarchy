@@ -7,14 +7,12 @@ use std::path::Path;
 use crate::event::{dedupe_events, AgentEvent, EventStatus};
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct DisplayAgentEvent {
     #[serde(flatten)]
     pub(crate) event: AgentEvent,
-    #[serde(rename = "displayLabel")]
     pub(crate) display_label: String,
-    #[serde(rename = "displayCreatedAt")]
     pub(crate) display_created_at: String,
-    #[serde(rename = "displayProject")]
     pub(crate) display_project: String,
 }
 
@@ -32,16 +30,16 @@ pub(crate) struct StatusOutput {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct BuildInfo {
     pub(crate) name: String,
     pub(crate) version: String,
     pub(crate) commit: String,
     pub(crate) dirty: bool,
-    #[serde(rename = "commitDate")]
     pub(crate) commit_date: String,
     /// The binary owns the state path: a consumer reads it here instead of
     /// deriving its own from the environment.
-    #[serde(rename = "statePath", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) state_path: Option<String>,
 }
 

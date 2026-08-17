@@ -14,41 +14,29 @@ pub(crate) enum EventStatus {
 /// `start_time` (jiffies since boot, from `/proc/<pid>/stat`) makes the
 /// reference immune to pid recycling.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ProcessRef {
     pub(crate) pid: i64,
-    #[serde(rename = "startTime")]
     pub(crate) start_time: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct SourceWindow {
     pub(crate) id: i64,
     pub(crate) name: String,
     pub(crate) monitor: String,
-    #[serde(rename = "clientPid")]
     pub(crate) client_pid: i64,
-    #[serde(
-        default,
-        rename = "clientAddress",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) client_address: Option<String>,
     /// Every window that can be the source, best guess first. A single-process
     /// terminal gives all its windows one pid, so the true source window is not
     /// knowable at capture time. Invariant: the first entry is `client_address`.
-    #[serde(
-        default,
-        rename = "clientAddresses",
-        skip_serializing_if = "Vec::is_empty"
-    )]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) client_addresses: Vec<String>,
     /// The window's own shell in the hook's process chain: the per-window
     /// liveness anchor a shared-pid terminal cannot provide.
-    #[serde(
-        default,
-        rename = "sourceProcess",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) source_process: Option<ProcessRef>,
     pub(crate) title: String,
     /// Keeps keys written by a newer binary alive across a rewrite by this one.
@@ -97,36 +85,21 @@ pub(crate) enum FocusOutcome {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct AgentEvent {
     pub(crate) id: String,
     pub(crate) agent: String,
     pub(crate) kind: String,
-    #[serde(rename = "projectName")]
     pub(crate) project_name: String,
-    #[serde(rename = "projectPath")]
     pub(crate) project_path: String,
-    #[serde(
-        default,
-        rename = "projectKey",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) project_key: Option<String>,
-    #[serde(
-        default,
-        rename = "branchName",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) branch_name: Option<String>,
     pub(crate) cwd: String,
-    #[serde(rename = "sessionId")]
     pub(crate) session_id: String,
-    #[serde(
-        default,
-        rename = "sessionTitle",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) session_title: Option<String>,
-    #[serde(rename = "createdAt")]
     pub(crate) created_at: String,
     pub(crate) workspace: Option<SourceWindow>,
     pub(crate) status: EventStatus,
