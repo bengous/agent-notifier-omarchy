@@ -2,7 +2,6 @@ pub(crate) mod cli;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use std::collections::HashSet;
 use std::env;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -15,88 +14,41 @@ use crate::display::{
 };
 use crate::event::store::{read_state_or_recover, state_path, with_state_update};
 use crate::event::{
-    append_and_trim, clear_read_events, dedupe_events, empty_state, set_event_status,
-    set_window_address_read, state_has_unread_for_address, Agent, AgentEvent, AgentNotifierState,
-    EventStatus, FocusOutcome, SourceWindow,
+    append_and_trim, capture_decision, clear_read_events, empty_state,
+    mark_focused_window_events_read, prune_stale_events, set_event_status, Agent, AgentEvent,
+    AgentNotifierState, CaptureDecision, EventStatus, FocusOutcome, SourceLiveness, SourceWindow,
 };
 use crate::exec::{run_command, run_command_owned, DEFAULT_TIMEOUT};
 use crate::intake;
 use crate::window::{hyprland, proc};
 use crate::{STATUS_ERROR_CLASS, UNAVAILABLE_STATUS_JSON, UNAVAILABLE_STATUS_TOOLTIP};
 
-fn set_focused_window_read(state: AgentNotifierState) -> AgentNotifierState {
-    match hyprland::focused_window_address() {
-        Some(address) => set_window_address_read(state, &address),
-        None => state,
-    }
+fn mark_address_read(address: &str, now: DateTime<Utc>) -> io::Result<()> {
+    let _ = with_state_update(&state_path()?, now, |state| {
+        mark_focused_window_events_read(state, Some(address))
+    })?;
+    Ok(())
 }
 
-fn mark_address_read(address: &str, now: DateTime<Utc>) -> io::Result<bool> {
-    let mut changed = false;
-    let _ = with_state_update(&state_path()?, now, |state| {
-        changed = state_has_unread_for_address(&state, address);
-        if changed {
-            set_window_address_read(state, address)
-        } else {
-            state
-        }
-    })?;
-    Ok(changed)
+fn compositor_liveness() -> SourceLiveness {
+    SourceLiveness {
+        existing_addresses: hyprland::existing_window_addresses(),
+        process_is_alive: proc::process_is_alive,
+    }
 }
 
 fn focusable_events(events: &[AgentEvent]) -> Vec<AgentEvent> {
-    focusable_events_for_addresses(events, &hyprland::existing_window_addresses())
+    crate::event::focusable_events(events, &compositor_liveness())
 }
 
-fn focusable_events_for_addresses(
-    events: &[AgentEvent],
-    existing_addresses: &HashSet<String>,
-) -> Vec<AgentEvent> {
-    let focusable = events
-        .iter()
-        .filter(|event| event_has_live_source(event, existing_addresses))
-        .cloned()
-        .collect::<Vec<_>>();
-    dedupe_events(focusable)
-}
-
-/// The source process is the per-window death signal: closing the window kills
-/// its shell even when the terminal shares one pid across windows. Events
-/// without one (legacy state) fall back to window-address liveness.
-fn event_has_live_source(event: &AgentEvent, existing_addresses: &HashSet<String>) -> bool {
-    event
-        .workspace
-        .as_ref()
-        .is_some_and(|workspace| match &workspace.source_process {
-            Some(process) => proc::process_is_alive(process),
-            None => workspace
-                .candidate_addresses()
-                .iter()
-                .any(|address| existing_addresses.contains(*address)),
-        })
-}
-
-fn prune_stale_events(
-    mut state: AgentNotifierState,
-    existing_addresses: &HashSet<String>,
-) -> AgentNotifierState {
-    state
-        .events
-        .retain(|event| event_has_live_source(event, existing_addresses));
-    state
-}
-
-fn read_state_with_focused_window_read(now: DateTime<Utc>) -> io::Result<AgentNotifierState> {
-    let path = state_path()?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let current = read_state_or_recover(&path, now)?;
-    let next = set_focused_window_read(current.clone());
-    if next == current {
-        return Ok(current);
-    }
-    with_state_update(&path, now, set_focused_window_read)
+fn read_state_with_focused_window_read(
+    path: &Path,
+    focused: Option<&str>,
+    now: DateTime<Utc>,
+) -> io::Result<AgentNotifierState> {
+    with_state_update(path, now, |state| {
+        mark_focused_window_events_read(state, focused)
+    })
 }
 
 fn format_status(state: &AgentNotifierState) -> StatusOutput {
@@ -142,14 +94,6 @@ fn sound_file() -> PathBuf {
         .join("agent-complete.mp3")
 }
 
-/// Only events whose source window we can address again are worth persisting.
-fn should_capture_event(event: &AgentEvent) -> bool {
-    event
-        .workspace
-        .as_ref()
-        .is_some_and(|workspace| workspace.client_address.is_some())
-}
-
 fn notify(event: &AgentEvent) {
     let agent_name = Agent::from_id(&event.agent).display_name();
     let _ = run_command_owned(
@@ -181,21 +125,18 @@ fn play_sound() {
 }
 
 fn capture_completion_event(event: &AgentEvent, now: DateTime<Utc>) -> io::Result<()> {
-    if hyprland::is_focused_source_event(event) {
-        return Ok(());
-    }
-    if should_capture_event(event) {
-        with_state_update(&state_path()?, now, |state| {
-            append_and_trim(state, event.clone())
-        })?;
-    } else {
-        // Without an address we could never focus or expire this event, so it is
-        // not persisted. The alert still fires: losing the notification entirely
-        // is the one failure this tool exists to prevent. Note this path bypasses
-        // deduplication, because nothing is stored to deduplicate against.
-        eprintln!(
-            "agent-notifier: no Hyprland client address for this completion; alerting without storing"
-        );
+    match capture_decision(event, hyprland::focused_window_address().as_deref()) {
+        CaptureDecision::Discard => return Ok(()),
+        CaptureDecision::PersistAndAlert => {
+            with_state_update(&state_path()?, now, |state| {
+                append_and_trim(state, event.clone())
+            })?;
+        }
+        CaptureDecision::AlertOnly => {
+            eprintln!(
+                "agent-notifier: no Hyprland client address for this completion; alerting without storing"
+            );
+        }
     }
     let notify_event = event.clone();
     let sound = thread::spawn(play_sound);
@@ -228,7 +169,9 @@ fn handle_agent_hook(agent: Agent) -> io::Result<()> {
 }
 
 fn handle_status_json() -> io::Result<()> {
-    let state = read_state_with_focused_window_read(Utc::now())?;
+    let focused = hyprland::focused_window_address();
+    let state =
+        read_state_with_focused_window_read(&state_path()?, focused.as_deref(), Utc::now())?;
     let output = std::panic::catch_unwind(|| format_status(&state))
         .unwrap_or_else(|_| unavailable_status_output());
     print_json(&output);
@@ -239,8 +182,7 @@ fn handle_focused_window_read() -> io::Result<()> {
     let Some(address) = hyprland::focused_window_address() else {
         return Ok(());
     };
-    mark_address_read(&address, Utc::now())?;
-    Ok(())
+    mark_address_read(&address, Utc::now())
 }
 
 fn handle_watch_focused_window() -> io::Result<()> {
@@ -340,7 +282,12 @@ pub(crate) fn run() -> io::Result<i32> {
             Ok(0)
         }
         CliCommand::ListDisplayJson => {
-            let state = read_state_with_focused_window_read(Utc::now())?;
+            let focused = hyprland::focused_window_address();
+            let state = read_state_with_focused_window_read(
+                &state_path()?,
+                focused.as_deref(),
+                Utc::now(),
+            )?;
             print_json(&display_state_from_events(
                 state.version,
                 focusable_events(&state.events),
@@ -391,9 +338,12 @@ pub(crate) fn run() -> io::Result<i32> {
             Ok(0)
         }
         CliCommand::PruneStale => {
-            let existing_addresses = hyprland::try_existing_window_addresses()?;
+            let liveness = SourceLiveness {
+                existing_addresses: hyprland::try_existing_window_addresses()?,
+                process_is_alive: proc::process_is_alive,
+            };
             let _ = with_state_update(&state_path()?, Utc::now(), |state| {
-                prune_stale_events(state, &existing_addresses)
+                prune_stale_events(state, &liveness)
             })?;
             Ok(0)
         }

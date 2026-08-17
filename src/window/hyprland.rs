@@ -147,16 +147,6 @@ pub(crate) fn current_source_window() -> Option<SourceWindow> {
     resolve_source_window_from_pid_chain(current_parent_pid(), &clients)
 }
 
-/// Drop a completion only when the source is certain: the candidate set is
-/// exactly the focused window. An uncertain set keeps the event, even when the
-/// best guess holds the focus.
-pub(crate) fn is_focused_source_event(event: &AgentEvent) -> bool {
-    let Some(source_window) = event.workspace.as_ref() else {
-        return false;
-    };
-    focused_window_address().is_some_and(|focused| source_window.is_sole_candidate(&focused))
-}
-
 /// Focus the first candidate window that still exists.
 ///
 /// There is deliberately no PID or workspace fallback beyond the stored
@@ -266,7 +256,7 @@ fn clients_by_pid(clients: &[HyprClient]) -> HashMap<i64, Vec<&HyprClient>> {
 
 /// A single-process terminal gives every window the same pid, so the source
 /// window is not knowable. Prefer an unfocused sibling: the focused window is
-/// the one whose completion `is_focused_source_event` drops.
+/// the one whose completion `capture_decision` discards.
 fn source_rank(candidate: &HyprClient) -> (bool, i64) {
     let rank = candidate.focus_history_id.unwrap_or(i64::MAX);
     (rank == 0, rank)

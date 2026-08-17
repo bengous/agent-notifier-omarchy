@@ -62,13 +62,6 @@ const PLANNED_DEBT: &[Debt] = &[
         // belong to display, not to the crate root.
         step: "C4",
     },
-    Debt {
-        from: "app",
-        to: "std::fs",
-        // TODO(C3): the read that marks the focused window read moves behind
-        // the event store, which owns directory creation.
-        step: "C3",
-    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
