@@ -17,8 +17,8 @@ src/
 │   ├── deps.rs     the world run() needs (state path, clock, stdin, windows, alert) + its system adapter
 │   ├── mod.rs      run(cmd, deps) dispatch
 │   ├── capture.rs  hooks: intake → window (workspace passed by value) → event → store → alert
-│   ├── query.rs    status-json / list-display-json; mark-read-on-focus is a named fn here
-│   ├── focus.rs    focus-id, mark-read, clear-*, prune-stale
+│   ├── query.rs    the printing commands; mark-read-on-focus is a named fn here
+│   ├── focus.rs    the state-changing commands: focus-*, mark-read, clear-*, prune-stale
 │   └── watch.rs    daemon entry; the loop itself lives in the window adapter
 ├── event/          domain core — pure except store.rs
 │   ├── model.rs    frozen events.json v1 contract: data + invariants, zero policy
