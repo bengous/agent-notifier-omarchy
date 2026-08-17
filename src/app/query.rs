@@ -13,9 +13,11 @@ pub(in crate::app) fn status_json(deps: &dyn Deps) -> io::Result<()> {
     let focused = deps.focused_window_address();
     let state = read_state_marking_focused_window_read(deps, focused.as_deref())?;
     let liveness = deps.liveness();
-    let output =
-        std::panic::catch_unwind(|| status_output(&focusable_events(&state.events, &liveness)))
-            .unwrap_or_else(|_| unavailable_status_output());
+    let setup = deps.setup_probe();
+    let output = std::panic::catch_unwind(|| {
+        status_output(&focusable_events(&state.events, &liveness), &setup)
+    })
+    .unwrap_or_else(|_| unavailable_status_output());
     print_json(&output, deps)
 }
 
@@ -23,7 +25,11 @@ pub(in crate::app) fn list_display_json(deps: &dyn Deps) -> io::Result<()> {
     let focused = deps.focused_window_address();
     let state = read_state_marking_focused_window_read(deps, focused.as_deref())?;
     let events = focusable_events(&state.events, &deps.liveness());
-    print_json(&display_state_from_events(state.version, events), deps)
+    let setup = deps.setup_probe();
+    print_json(
+        &display_state_from_events(state.version, events, &setup),
+        deps,
+    )
 }
 
 pub(in crate::app) fn list_json(deps: &dyn Deps) -> io::Result<()> {

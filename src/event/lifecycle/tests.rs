@@ -5,7 +5,7 @@ use crate::event::{empty_state, parse_state};
 use crate::test_fixtures::{
     base_event, base_pi_event, event_with_address, event_with_candidates, event_with_pid,
     event_with_session, event_with_source_process, fixture_clock, sessionless_event, state_of,
-    workspace,
+    wired_probe, workspace,
 };
 use std::fs;
 use std::path::Path;
@@ -93,7 +93,10 @@ fn two_sessions_sharing_one_terminal_pid_stay_separate() {
     let state = append_and_trim(state, second);
 
     assert_eq!(state.events.len(), 2);
-    assert_eq!(status_output(&state.events).text, "agents 󰂚 2");
+    assert_eq!(
+        status_output(&state.events, &wired_probe()).text,
+        "agents 󰂚 2"
+    );
 }
 
 #[test]
@@ -140,7 +143,10 @@ fn marking_duplicate_session_read_updates_all_copies() {
         .events
         .iter()
         .all(|event| event.status == EventStatus::Read));
-    assert_eq!(status_output(&dedupe_events(state.events)).text, "agents");
+    assert_eq!(
+        status_output(&dedupe_events(state.events), &wired_probe()).text,
+        "agents"
+    );
 }
 
 #[test]
@@ -152,7 +158,7 @@ fn a_read_with_a_focused_window_marks_only_its_events_read() {
     let state = mark_focused_window_events_read(state, Some("0xfocused"));
 
     assert_eq!(
-        status_output(&dedupe_events(state.events)).text,
+        status_output(&dedupe_events(state.events), &wired_probe()).text,
         "agents 󰂚 1"
     );
 }
@@ -250,7 +256,7 @@ fn excludes_stored_events_when_no_source_window_exists() {
     let focusable = focusable_events(&events, &liveness_of(&[], |_| false));
 
     assert!(focusable.is_empty());
-    assert_eq!(status_output(&focusable).text, "agents");
+    assert_eq!(status_output(&focusable, &wired_probe()).text, "agents");
 }
 
 #[test]
@@ -271,7 +277,7 @@ fn includes_only_events_matching_existing_hyprland_addresses() {
         focusable.first().map(|event| event.id.as_str()),
         Some("live-window")
     );
-    assert_eq!(status_output(&focusable).text, "agents 󰂚 1");
+    assert_eq!(status_output(&focusable, &wired_probe()).text, "agents 󰂚 1");
 }
 
 #[test]

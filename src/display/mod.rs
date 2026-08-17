@@ -5,6 +5,7 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use crate::event::{dedupe_events, AgentEvent, EventStatus};
+use crate::setup::{is_ready, HarnessState, SetupReport};
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +21,8 @@ pub(crate) struct DisplayAgentEvent {
 pub(crate) struct DisplayState {
     pub(crate) version: u8,
     pub(crate) events: Vec<DisplayAgentEvent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) setup: Option<SetupSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -27,6 +30,40 @@ pub(crate) struct StatusOutput {
     pub(crate) text: String,
     pub(crate) tooltip: String,
     pub(crate) class: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) setup: Option<SetupSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SetupSummary {
+    pub(crate) ready: bool,
+    pub(crate) listener_live: bool,
+    pub(crate) harnesses: Vec<SetupHarnessRow>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SetupHarnessRow {
+    pub(crate) harness: String,
+    pub(crate) display_name: String,
+    pub(crate) state: HarnessState,
+}
+
+pub(crate) fn setup_summary(report: &SetupReport) -> SetupSummary {
+    SetupSummary {
+        ready: is_ready(report),
+        listener_live: report.listener_live,
+        harnesses: report
+            .harnesses
+            .iter()
+            .map(|row| SetupHarnessRow {
+                harness: row.harness.clone(),
+                display_name: row.display_name.clone(),
+                state: row.state,
+            })
+            .collect(),
+    }
 }
 
 /// The status a consumer gets when this binary cannot produce a real one.
@@ -44,6 +81,7 @@ pub(crate) fn unavailable_status_output() -> StatusOutput {
         text: "agents !".to_owned(),
         tooltip: UNAVAILABLE_STATUS_TOOLTIP.to_owned(),
         class: STATUS_ERROR_CLASS.to_owned(),
+        setup: None,
     }
 }
 
@@ -125,9 +163,17 @@ pub(crate) fn event_label(event: &AgentEvent) -> String {
     event.project_name.clone()
 }
 
-fn format_tooltip(events: &[AgentEvent]) -> String {
+const SETUP_TOOLTIP: &str = "Setup required — run: agent-notifier doctor";
+const WAITING_TOOLTIP: &str = "Waiting for agent completions";
+
+fn format_tooltip(events: &[AgentEvent], ready: bool) -> String {
     if events.is_empty() {
-        return "No agent completions".to_owned();
+        return if ready {
+            WAITING_TOOLTIP
+        } else {
+            SETUP_TOOLTIP
+        }
+        .to_owned();
     }
     events
         .iter()
@@ -163,20 +209,24 @@ fn format_agent_button(unread_count: usize) -> String {
     format!("agents 󰂚 {unread_count}")
 }
 
-pub(crate) fn status_output(events: &[AgentEvent]) -> StatusOutput {
+pub(crate) fn status_output(events: &[AgentEvent], setup: &SetupReport) -> StatusOutput {
     let unread = events
         .iter()
         .filter(|event| event.status == EventStatus::Unread)
         .cloned()
         .collect::<Vec<_>>();
+    let ready = is_ready(setup);
     StatusOutput {
         text: format_agent_button(unread.len()),
-        tooltip: format_tooltip(&unread),
-        class: if unread.is_empty() {
+        tooltip: format_tooltip(&unread, ready),
+        class: if !unread.is_empty() {
+            "unread".to_owned()
+        } else if ready {
             "empty".to_owned()
         } else {
-            "unread".to_owned()
+            "setup".to_owned()
         },
+        setup: Some(setup_summary(setup)),
     }
 }
 
@@ -243,11 +293,16 @@ fn project_labels(events: &[AgentEvent]) -> HashMap<String, String> {
         .collect()
 }
 
-pub(crate) fn display_state_from_events(version: u8, events: Vec<AgentEvent>) -> DisplayState {
+pub(crate) fn display_state_from_events(
+    version: u8,
+    events: Vec<AgentEvent>,
+    setup: &SetupReport,
+) -> DisplayState {
     let grouped = group_by_project(dedupe_events(events));
     let labels = project_labels(&grouped);
     DisplayState {
         version,
+        setup: Some(setup_summary(setup)),
         events: grouped
             .into_iter()
             .map(|event| DisplayAgentEvent {

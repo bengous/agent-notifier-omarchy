@@ -38,7 +38,19 @@ jq --argjson pid "$$" --argjson start "${start_time}" \
   '.events |= map(.workspace.sourceProcess = {pid: $pid, startTime: $start})' \
   "${QML_DIR}/fixtures/events-v1.json" >"${WORK_DIR}/state/agent-notifier/events.json"
 
-XDG_STATE_HOME="${WORK_DIR}/state" "${REPO_DIR}/target/debug/agent-notifier" list-display-json \
+# The setup probe reads PATH, HOME and CODEX_HOME. A controlled sandbox —
+# one stub harness binary, one wired settings.json — keeps the generated
+# contract document independent of the machine that runs the gate.
+mkdir -p "${WORK_DIR}/bin" "${WORK_DIR}/home/.claude"
+ln -s "${REPO_DIR}/target/debug/agent-notifier" "${WORK_DIR}/bin/agent-notifier"
+printf '#!/bin/sh\nexit 0\n' >"${WORK_DIR}/bin/claude"
+chmod +x "${WORK_DIR}/bin/claude"
+cat >"${WORK_DIR}/home/.claude/settings.json" <<'EOF'
+{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"agent-notifier claude-hook","timeout":5}]}]}}
+EOF
+
+env PATH="${WORK_DIR}/bin" HOME="${WORK_DIR}/home" CODEX_HOME="" \
+  XDG_STATE_HOME="${WORK_DIR}/state" "${REPO_DIR}/target/debug/agent-notifier" list-display-json \
   >"${WORK_DIR}/display-state.json"
 
 # offscreen is the platform Qt Quick Test documents for headless runs, and Qt

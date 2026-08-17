@@ -68,8 +68,6 @@ pub(crate) struct SetupReport {
 
 /// The listener stays out of readiness: without it, mark-read-on-focus
 /// degrades, but completions still reach the widget.
-// expect(dead_code) dies with the first production caller: the display summary.
-#[cfg_attr(not(test), expect(dead_code))]
 pub(crate) fn is_ready(report: &SetupReport) -> bool {
     report.binary_on_path
         && report

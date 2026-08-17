@@ -175,7 +175,7 @@ your shell `PATH`.
 | Command | Purpose |
 |---|---|
 | `hook`, `claude-hook`, `pi-hook` | Capture a completion from stdin |
-| `status-json` | Print `{"text","tooltip","class"}` for the bar widget; `class` is `empty` or `unread` |
+| `status-json` | Print `{"text","tooltip","class","setup"}` for the bar widget; `class` is `unread`, `setup`, or `empty`, in that priority |
 | `list-display-json` | Print the focusable events the widget renders |
 | `version-json` | Print build metadata: `{"name","version","commit","dirty","commitDate","statePath"}` |
 | `doctor [--json]` | Print the setup diagnosis; see [Troubleshooting](#troubleshooting) |

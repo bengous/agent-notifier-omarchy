@@ -1,11 +1,12 @@
 use super::*;
 use crate::event::SourceWindow;
 use crate::test_fixtures::{
-    base_event, event_in_project, event_with_address, event_with_pid, state_of, workspace,
+    base_event, event_in_project, event_with_address, event_with_pid, nothing_installed_probe,
+    state_of, wired_probe, workspace,
 };
 
 fn displayed_projects(events: Vec<AgentEvent>) -> Vec<(String, String)> {
-    display_state_from_events(1, events)
+    display_state_from_events(1, events, &wired_probe())
         .events
         .into_iter()
         .map(|row| (row.event.id, row.display_project))
@@ -38,7 +39,11 @@ fn strips_any_leading_spinner_glyph() {
 
 #[test]
 fn display_state_exposes_exactly_the_keys_the_widget_reads() {
-    let state = display_state_from_events(1, vec![event_with_address("e", 300, "0xbeef")]);
+    let state = display_state_from_events(
+        1,
+        vec![event_with_address("e", 300, "0xbeef")],
+        &wired_probe(),
+    );
     let value = serde_json::to_value(&state).unwrap_or(serde_json::Value::Null);
     let event = &value["events"][0];
 
@@ -53,6 +58,64 @@ fn display_state_exposes_exactly_the_keys_the_widget_reads() {
         assert!(!event[key].is_null(), "missing key: {key}");
     }
     assert!(value["events"].is_array());
+}
+
+#[test]
+fn the_setup_summary_exposes_exactly_the_keys_the_widget_reads(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let value = serde_json::to_value(setup_summary(&wired_probe()))?;
+    let summary = value.as_object().ok_or("summary is not an object")?;
+    let mut summary_keys = summary.keys().map(String::as_str).collect::<Vec<_>>();
+    summary_keys.sort_unstable();
+    assert_eq!(summary_keys, ["harnesses", "listenerLive", "ready"]);
+
+    let rows = value["harnesses"]
+        .as_array()
+        .ok_or("harnesses is not an array")?;
+    let names = rows
+        .iter()
+        .map(|row| row["harness"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["claude", "codex", "pi"]);
+    for row in rows {
+        let row = row.as_object().ok_or("row is not an object")?;
+        let mut row_keys = row.keys().map(String::as_str).collect::<Vec<_>>();
+        row_keys.sort_unstable();
+        assert_eq!(row_keys, ["displayName", "harness", "state"]);
+    }
+    Ok(())
+}
+
+#[test]
+fn the_status_setup_field_serializes_additively() -> Result<(), Box<dyn std::error::Error>> {
+    let with_setup = status_output(&[], &wired_probe());
+    let bare = StatusOutput {
+        setup: None,
+        ..with_setup.clone()
+    };
+    let with_value = serde_json::to_value(&with_setup)?;
+    let mut bare_value = serde_json::to_value(&bare)?;
+
+    assert!(bare_value.get("setup").is_none());
+    bare_value["setup"] = with_value["setup"].clone();
+    assert_eq!(with_value, bare_value);
+    Ok(())
+}
+
+#[test]
+fn the_display_state_setup_field_serializes_additively() -> Result<(), Box<dyn std::error::Error>> {
+    let with_setup = display_state_from_events(1, Vec::new(), &wired_probe());
+    let bare = DisplayState {
+        setup: None,
+        ..with_setup.clone()
+    };
+    let with_value = serde_json::to_value(&with_setup)?;
+    let mut bare_value = serde_json::to_value(&bare)?;
+
+    assert!(bare_value.get("setup").is_none());
+    bare_value["setup"] = with_value["setup"].clone();
+    assert_eq!(with_value, bare_value);
+    Ok(())
 }
 
 #[test]
@@ -274,7 +337,7 @@ fn counts_unread_events_in_status_label() {
         ..event.clone()
     };
     let state = state_of(vec![event.clone(), read, other]);
-    let output = status_output(&dedupe_events(state.events));
+    let output = status_output(&dedupe_events(state.events), &wired_probe());
     assert_eq!(output.text, "agents 󰂚 2");
     assert_eq!(output.class, "unread");
 }
@@ -289,7 +352,7 @@ fn the_status_tooltip_is_the_window_title_and_the_completion_time(
         }),
         ..base_event()
     }]);
-    let output = status_output(&dedupe_events(state.events));
+    let output = status_output(&dedupe_events(state.events), &wired_probe());
     assert_eq!(output.text, "agents 󰂚 1");
     assert_eq!(output.tooltip, "line\nbreak May 6, 2026 10:00 AM UTC");
     assert_eq!(output.class, "unread");
@@ -297,18 +360,31 @@ fn the_status_tooltip_is_the_window_title_and_the_completion_time(
 }
 
 #[test]
-fn ignores_read_events() {
+fn a_read_only_status_waits_for_completions_when_the_setup_is_ready() {
     let mut event = base_event();
     event.status = EventStatus::Read;
-    let output = status_output(&dedupe_events(vec![event]));
+    let output = status_output(&dedupe_events(vec![event]), &wired_probe());
+    assert_eq!(output.text, "agents");
+    assert_eq!(output.tooltip, "Waiting for agent completions");
+    assert_eq!(output.class, "empty");
+}
+
+#[test]
+fn an_empty_status_with_an_unready_setup_asks_for_setup() {
+    let output = status_output(&[], &nothing_installed_probe());
+    assert_eq!(output.text, "agents");
     assert_eq!(
-        output,
-        StatusOutput {
-            text: "agents".to_owned(),
-            tooltip: "No agent completions".to_owned(),
-            class: "empty".to_owned(),
-        }
+        output.tooltip,
+        "Setup required — run: agent-notifier doctor"
     );
+    assert_eq!(output.class, "setup");
+}
+
+#[test]
+fn unread_events_keep_the_unread_class_over_setup() {
+    let output = status_output(&[event_with_pid("event-1", 1)], &nothing_installed_probe());
+    assert_eq!(output.class, "unread");
+    assert!(output.tooltip.contains("dotfiles | main"));
 }
 
 #[test]

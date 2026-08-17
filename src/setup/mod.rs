@@ -4,6 +4,6 @@ mod state;
 
 pub(crate) use probe::gather_setup_probe;
 pub(crate) use render::doctor_report;
-pub(crate) use state::SetupReport;
 #[cfg(test)]
-pub(crate) use state::{HarnessReport, HarnessState};
+pub(crate) use state::HarnessReport;
+pub(crate) use state::{is_ready, HarnessState, SetupReport};

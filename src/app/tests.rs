@@ -168,7 +168,7 @@ fn status_json_prints_the_widget_shape_and_marks_the_focused_window_read(
     assert_eq!(run(&CliCommand::StatusJson, &deps)?, 0);
 
     let status = deps.printed_json()?;
-    assert_eq!(sorted_keys(&status)?, ["class", "text", "tooltip"]);
+    assert_eq!(sorted_keys(&status)?, ["class", "setup", "text", "tooltip"]);
     assert_eq!(status["text"], "agents 󰂚 1");
     assert_eq!(status["class"], "unread");
     assert_eq!(deps.stored_event("focused")?.status, EventStatus::Read);
@@ -190,7 +190,7 @@ fn list_display_json_prints_the_display_fields_and_marks_the_focused_window_read
     assert_eq!(run(&CliCommand::ListDisplayJson, &deps)?, 0);
 
     let display = deps.printed_json()?;
-    assert_eq!(sorted_keys(&display)?, ["events", "version"]);
+    assert_eq!(sorted_keys(&display)?, ["events", "setup", "version"]);
     assert_eq!(display["version"], 1);
     let event = &display["events"][0];
     assert_eq!(event["id"], "focused");
