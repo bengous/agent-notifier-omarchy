@@ -36,6 +36,14 @@ No Rust toolchain? Every
 `x86_64` and an `aarch64` Linux archive, each with a `.sha256` checksum file.
 Unpack the archive for your machine and put `agent-notifier` on your `PATH`.
 
+`scripts/onboard.sh`, in this repository, does that whole pass for you: it
+downloads the archive of the latest release, checks its checksum, installs the
+binary and its sound into `~/.local` (`PREFIX` overrides the root), wires the
+hooks that need it, and prints the listener line. It asks before it wires;
+`--yes` answers yes to everything. Run it again after a release to update the
+binary. It never installs a system package: a missing tool is reported with the
+`pacman` line that installs it.
+
 The bar widget calls `agent-notifier` through `PATH`, so the binary directory
 must be on the `PATH` of your Omarchy session.
 
@@ -277,6 +285,7 @@ the newer fields until you do.
 | Variable | Effect |
 |---|---|
 | `XDG_STATE_HOME`, `HOME` | Where `events.json` lives; see [State](#state) |
+| `AGENT_NOTIFIER_ONBOARD_ARCHIVE` | Release archive `scripts/onboard.sh` installs, instead of downloading one; its `.sha256` must sit beside it |
 | `AGENT_NOTIFIER_SHARE_DIR` | Runtime data directory, instead of the one derived from the binary path |
 | `AGENT_NOTIFIER_SOUND_DIR` | Directory holding `agent-complete.mp3`, instead of the runtime data directory |
 | `AGENT_NOTIFIER_SOUND_FILE` | Full path of the completion sound; wins over both directories |
@@ -294,6 +303,7 @@ the newer fields until you do.
 | `notify-send` | Optional | No desktop pop-up; the event is still captured |
 | `mpv`, `canberra-gtk-play` | Optional | No sound; both are tried in that order |
 | `git` | Optional | No branch name; the cwd becomes the project path |
+| `gum`, `curl`, `jq`, `tar`, `sha256sum` | `scripts/onboard.sh` only | It names the missing packages and stops |
 | Rust >= 1.89, Bash | Build only | - |
 
 ## Tests
