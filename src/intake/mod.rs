@@ -35,7 +35,9 @@ pub(crate) fn capture(
             workspace,
             now,
             random_id: id::random_hex(4),
-            env_session_id: env::var(profile.session_id_env_var).ok(),
+            env_session_id: profile
+                .session_id_env_var
+                .and_then(|var| env::var(var).ok()),
         },
     );
     AgentEvent {

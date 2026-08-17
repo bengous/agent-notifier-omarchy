@@ -126,7 +126,7 @@ fn a_hypothetical_agent_is_a_profile_not_a_new_pipeline() {
     let hypothetical = Profile {
         id: "hypothetical",
         session_id_fields: &[SessionIdField::LeafId, SessionIdField::SessionId],
-        session_id_env_var: "HYPOTHETICAL_SESSION_ID",
+        session_id_env_var: Some("HYPOTHETICAL_SESSION_ID"),
         title_source: None,
     };
     let input = parse_hook_input(r#"{"session_id":"s-1","leafId":"leaf-9"}"#);
@@ -143,7 +143,7 @@ fn the_environment_session_id_backstops_an_empty_chain() {
     let hypothetical = Profile {
         id: "hypothetical",
         session_id_fields: &[SessionIdField::SessionId],
-        session_id_env_var: "HYPOTHETICAL_SESSION_ID",
+        session_id_env_var: Some("HYPOTHETICAL_SESSION_ID"),
         title_source: None,
     };
 
@@ -157,4 +157,14 @@ fn the_environment_session_id_backstops_an_empty_chain() {
     );
 
     assert_eq!(event.session_id, "env-session");
+}
+
+#[test]
+fn claude_takes_no_session_id_from_the_environment() {
+    assert_eq!(profile(Agent::Claude).session_id_env_var, None);
+    assert_eq!(
+        profile(Agent::Codex).session_id_env_var,
+        Some("CODEX_SESSION_ID"),
+        "the environment fallback stays available to the agents that declare one"
+    );
 }

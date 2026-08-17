@@ -7,6 +7,6 @@ pub(super) const PROFILE: Profile = Profile {
         SessionIdField::SessionFile,
         SessionIdField::LeafId,
     ],
-    session_id_env_var: "PI_SESSION_ID",
+    session_id_env_var: Some("PI_SESSION_ID"),
     title_source: None,
 };

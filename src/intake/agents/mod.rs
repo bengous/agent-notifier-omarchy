@@ -21,7 +21,7 @@ pub(crate) enum TitleSource {
 pub(crate) struct Profile {
     pub(crate) id: &'static str,
     pub(crate) session_id_fields: &'static [SessionIdField],
-    pub(crate) session_id_env_var: &'static str,
+    pub(crate) session_id_env_var: Option<&'static str>,
     pub(crate) title_source: Option<TitleSource>,
 }
 
