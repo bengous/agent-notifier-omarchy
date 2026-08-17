@@ -36,6 +36,43 @@ fn parses_doctor_and_its_json_flag() {
 }
 
 #[test]
+fn parses_setup_for_every_wireable_harness() {
+    assert_eq!(
+        parse(&["setup", "claude"]),
+        CliCommand::Setup(WireTarget::Claude)
+    );
+    assert_eq!(
+        parse(&["setup", "codex"]),
+        CliCommand::Setup(WireTarget::Codex)
+    );
+    assert_eq!(
+        parse(&["setup", "codex", "--remove"]),
+        CliCommand::SetupRemove(WireTarget::Codex)
+    );
+}
+
+#[test]
+fn setup_refuses_the_pi_extension_and_every_unknown_harness() {
+    assert_eq!(parse(&["setup", "pi"]), CliCommand::SetupUnsupported);
+    assert_eq!(
+        parse(&["setup", "pi", "--remove"]),
+        CliCommand::SetupUnsupported
+    );
+    assert_eq!(parse(&["setup", "gemini"]), CliCommand::Unknown);
+    assert_eq!(parse(&["setup"]), CliCommand::SetupMissing);
+}
+
+#[test]
+fn setup_rejects_a_misplaced_flag_and_extra_arguments() {
+    assert_eq!(parse(&["setup", "--remove", "claude"]), CliCommand::Unknown);
+    assert_eq!(parse(&["setup", "claude", "--force"]), CliCommand::Unknown);
+    assert_eq!(
+        parse(&["setup", "claude", "--remove", "extra"]),
+        CliCommand::Unknown
+    );
+}
+
+#[test]
 fn parses_help_and_version() {
     assert_eq!(parse(&["--help"]), CliCommand::Help);
     assert_eq!(parse(&["-h"]), CliCommand::Help);

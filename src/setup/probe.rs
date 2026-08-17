@@ -44,7 +44,7 @@ fn harness_facts(agent: Agent) -> HarnessFacts {
     }
 }
 
-fn config_path_for(agent: Agent, home: Option<&Path>) -> PathBuf {
+pub(in crate::setup) fn config_path_for(agent: Agent, home: Option<&Path>) -> PathBuf {
     let home_dir = home.unwrap_or_else(|| Path::new(""));
     match agent {
         Agent::Claude => home_dir.join(".claude/settings.json"),
@@ -73,7 +73,7 @@ fn hook_command_from(agent: Agent, raw: &str) -> Option<String> {
     }
 }
 
-fn claude_hook_command_from(raw: &str) -> Option<String> {
+pub(in crate::setup) fn claude_hook_command_from(raw: &str) -> Option<String> {
     let Ok(settings) = serde_json::from_str::<serde_json::Value>(raw) else {
         return marker_command(raw, "claude-hook");
     };
@@ -86,7 +86,7 @@ fn claude_hook_command_from(raw: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-fn codex_hook_command_from(raw: &str) -> Option<String> {
+pub(in crate::setup) fn codex_hook_command_from(raw: &str) -> Option<String> {
     raw.lines()
         .map(str::trim)
         .filter(|line| !line.starts_with('#'))
@@ -120,7 +120,7 @@ fn is_path_character(character: char) -> bool {
     character.is_alphanumeric() || matches!(character, '/' | '.' | '_' | '-' | '~')
 }
 
-fn hook_program_resolves(
+pub(in crate::setup) fn hook_program_resolves(
     command: &str,
     home: Option<&Path>,
     on_path: &dyn Fn(&str) -> bool,
@@ -143,7 +143,7 @@ fn expand_home(program: &str, home: Option<&Path>) -> PathBuf {
     )
 }
 
-fn program_is_on_path(program: &str) -> bool {
+pub(in crate::setup) fn program_is_on_path(program: &str) -> bool {
     env::var_os("PATH").is_some_and(|path| {
         env::split_paths(&path).any(|dir| is_executable_file(&dir.join(program)))
     })

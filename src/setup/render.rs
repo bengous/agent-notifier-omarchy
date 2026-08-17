@@ -21,7 +21,7 @@ const LISTENER_POINTER: &str =
 const LISTENER_BLOCK: &str =
     r#"o.exec_on_start("/usr/local/bin/agent-notifier watch-focused-window")"#;
 
-const CLAUDE_HOOK_BLOCK: &str = r#"{
+pub(in crate::setup) const CLAUDE_HOOK_BLOCK: &str = r#"{
   "Stop": [
     {
       "hooks": [
@@ -35,7 +35,7 @@ const CLAUDE_HOOK_BLOCK: &str = r#"{
   ]
 }"#;
 
-const CODEX_HOOK_BLOCK: &str = r#"[[hooks.Stop]]
+pub(in crate::setup) const CODEX_HOOK_BLOCK: &str = r#"[[hooks.Stop]]
 
 [[hooks.Stop.hooks]]
 command = "agent-notifier hook"

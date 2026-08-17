@@ -1,3 +1,6 @@
+use crate::event::Agent;
+use crate::setup::WireTarget;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CliCommand {
     Help,
@@ -11,6 +14,10 @@ pub(crate) enum CliCommand {
     VersionJson,
     Doctor,
     DoctorJson,
+    Setup(WireTarget),
+    SetupRemove(WireTarget),
+    SetupMissing,
+    SetupUnsupported,
     FocusLatest,
     FocusId(String),
     FocusIdMissing,
@@ -51,6 +58,9 @@ impl CliCommand {
                     Self::Unknown
                 }
             }),
+            Some("setup") => args.next().map_or(Self::SetupMissing, |harness| {
+                Self::setup(&harness, args.next().as_deref())
+            }),
             Some("focus-latest") => Self::FocusLatest,
             Some("focus-id") => args.next().map_or(Self::FocusIdMissing, Self::FocusId),
             Some("mark-read") => args.next().map_or(Self::MarkReadMissing, Self::MarkRead),
@@ -65,6 +75,24 @@ impl CliCommand {
             return Self::Unknown;
         }
         command
+    }
+
+    fn setup(harness: &str, flag: Option<&str>) -> Self {
+        if matches!(flag, Some(other) if other != "--remove") {
+            return Self::Unknown;
+        }
+        let Some(target) = WireTarget::from_harness_id(harness) else {
+            return if Agent::from_id(harness).is_some() {
+                Self::SetupUnsupported
+            } else {
+                Self::Unknown
+            };
+        };
+        if flag.is_some() {
+            Self::SetupRemove(target)
+        } else {
+            Self::Setup(target)
+        }
     }
 }
 

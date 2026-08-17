@@ -14,7 +14,7 @@ use crate::event::{
 };
 use crate::intake::agents::profile;
 use crate::intake::build::{build_event, CaptureContext, HookInput};
-use crate::setup::{HarnessReport, HarnessState, SetupReport};
+use crate::setup::{HarnessReport, HarnessState, SetupReport, WireAction, WireOutcome, WireTarget};
 
 pub(crate) fn fixture_clock() -> DateTime<Utc> {
     DateTime::UNIX_EPOCH + Duration::from_secs(1_778_061_600)
@@ -123,6 +123,8 @@ pub(crate) struct FakeDeps {
     pub(crate) printed_lines: RefCell<Vec<String>>,
     pub(crate) alerts: RefCell<Vec<[String; 3]>>,
     pub(crate) setup_probe: SetupReport,
+    pub(crate) wire_calls: RefCell<Vec<(WireTarget, WireAction)>>,
+    pub(crate) wire_outcome: Result<WireOutcome, String>,
 }
 
 impl FakeDeps {
@@ -140,6 +142,8 @@ impl FakeDeps {
             printed_lines: RefCell::new(Vec::new()),
             alerts: RefCell::new(Vec::new()),
             setup_probe: nothing_installed_probe(),
+            wire_calls: RefCell::new(Vec::new()),
+            wire_outcome: Err("wire_setup is not stubbed".to_owned()),
         }
     }
 
@@ -225,6 +229,11 @@ impl Deps for FakeDeps {
 
     fn setup_probe(&self) -> SetupReport {
         self.setup_probe.clone()
+    }
+
+    fn wire_setup(&self, target: WireTarget, action: WireAction) -> io::Result<WireOutcome> {
+        self.wire_calls.borrow_mut().push((target, action));
+        self.wire_outcome.clone().map_err(io::Error::other)
     }
 }
 

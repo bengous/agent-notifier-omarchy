@@ -4,11 +4,13 @@ mod deps;
 mod focus;
 mod query;
 mod watch;
+mod wire;
 
 use std::io;
 
 use crate::app::cli::CliCommand;
 use crate::event::Agent;
+use crate::setup::WireAction;
 
 pub(crate) use crate::display::UNAVAILABLE_STATUS_JSON;
 pub(crate) use deps::{Deps, SystemDeps};
@@ -24,6 +26,7 @@ Commands:
   list-display-json        Print focusable events as display JSON
   version-json             Print build metadata as JSON
   doctor [--json]          Diagnose the harness wiring
+  setup <harness> [--remove]  Write or remove the completion hook (claude|codex)
   focus-id <event-id>      Focus an event by id
   mark-read <event-id>     Mark an event as read
   watch-focused-window     Watch focused-window changes
@@ -59,6 +62,20 @@ pub(crate) fn run(command: &CliCommand, deps: &dyn Deps) -> io::Result<i32> {
             Ok(0)
         }
         CliCommand::DoctorJson => query::doctor_json(deps).map(|()| 0),
+        CliCommand::Setup(target) => wire::wire(*target, WireAction::Wire, deps).map(|()| 0),
+        CliCommand::SetupRemove(target) => {
+            wire::wire(*target, WireAction::Remove, deps).map(|()| 0)
+        }
+        CliCommand::SetupMissing => {
+            eprintln!("agent-notifier: setup requires a harness: claude or codex");
+            Ok(2)
+        }
+        CliCommand::SetupUnsupported => {
+            eprintln!(
+                "agent-notifier: setup does not manage the pi extension; agent-notifier doctor prints the block to paste"
+            );
+            Ok(2)
+        }
         // TODO(contract): no known consumer — retire or test before v1.
         CliCommand::FocusLatest => focus::focus_latest(deps),
         CliCommand::FocusId(id) => focus::focus_id(id, deps),

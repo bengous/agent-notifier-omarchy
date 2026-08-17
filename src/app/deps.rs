@@ -5,7 +5,9 @@ use std::path::PathBuf;
 use crate::alert;
 use crate::event::store::state_path;
 use crate::event::{AgentEvent, FocusOutcome, SourceLiveness, SourceWindow};
-use crate::setup::{gather_setup_probe, SetupReport};
+use crate::setup::{
+    gather_setup_probe, wire_system, SetupReport, WireAction, WireOutcome, WireTarget,
+};
 use crate::window::{hyprland, proc};
 
 /// Everything `run` needs from the world, so that a command is dispatched the
@@ -24,6 +26,7 @@ pub(crate) trait Deps {
     fn watch_focused_window(&self, on_change: &mut dyn FnMut(&str)) -> io::Result<()>;
     fn alert(&self, app_name: &str, title: &str, body: &str);
     fn setup_probe(&self) -> SetupReport;
+    fn wire_setup(&self, target: WireTarget, action: WireAction) -> io::Result<WireOutcome>;
 }
 
 #[derive(Debug)]
@@ -84,5 +87,9 @@ impl Deps for SystemDeps {
 
     fn setup_probe(&self) -> SetupReport {
         gather_setup_probe(proc::listener_is_live())
+    }
+
+    fn wire_setup(&self, target: WireTarget, action: WireAction) -> io::Result<WireOutcome> {
+        wire_system(target, action, Utc::now())
     }
 }

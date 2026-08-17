@@ -87,9 +87,16 @@ Prefer a plain bar module over the plugin? `agent-notifier status-json` emits
 Every hook reads its payload on stdin and exits fast. A hook failure never
 blocks an agent turn.
 
+`agent-notifier setup claude` and `agent-notifier setup codex` write the block
+of their section for you: they back the config up, write it atomically, and
+read the result back. `--remove` takes the hook out again. Both commands leave
+an already wired config untouched, byte for byte. The Pi extension is yours to
+write: `setup` never touches it.
+
 ### Codex
 
-In `~/.codex/config.toml`:
+`agent-notifier setup codex` appends this block to `~/.codex/config.toml`, or
+add it by hand:
 
 ```toml
 [[hooks.Stop]]
@@ -103,7 +110,8 @@ type = "command"
 
 ### Claude Code
 
-In `~/.claude/settings.json`, merge this into `hooks`:
+`agent-notifier setup claude` merges this into `hooks` in
+`~/.claude/settings.json`, or merge it by hand:
 
 ```json
 {
@@ -179,6 +187,7 @@ your shell `PATH`.
 | `list-display-json` | Print the focusable events the widget renders |
 | `version-json` | Print build metadata: `{"name","version","commit","dirty","commitDate","statePath"}` |
 | `doctor [--json]` | Print the setup diagnosis; see [Troubleshooting](#troubleshooting) |
+| `setup <harness> [--remove]` | Write the completion hook of `claude` or `codex`, or remove it |
 | `focus-id <event-id>` | Focus one event and mark it read |
 | `mark-read <event-id>` | Mark one event read |
 | `watch-focused-window` | Mark the focused window's events read, as a long-running listener |
@@ -187,7 +196,8 @@ your shell `PATH`.
 
 `--help` prints this list. `--version` prints the package version. Unknown
 commands, extra arguments, and a missing event id exit 2. `focus-id` exits 1
-when it reaches no window.
+when it reaches no window. `setup` exits 2 on a harness it does not manage, and
+1 when it refuses to write; running it twice is safe.
 
 An event is visible only while its source window still exists. Completions from
 the already-focused window are dropped: you are looking at them.
@@ -224,7 +234,11 @@ same report as JSON.
 it, focusing a window by hand does not mark its events read.
 
 For every fixable state, `doctor` prints the exact block to paste: the same
-blocks as [Hook wiring](#hook-wiring), byte for byte.
+blocks as [Hook wiring](#hook-wiring), byte for byte. For `claude` and `codex`,
+`agent-notifier setup <harness>` writes that block instead of you. It keeps the
+two newest backups of the file it edits as `<config>.bak.<timestamp>`, and
+restores the file when the written hook does not read back. A config it cannot
+parse, or an agent-notifier block edited by hand, is reported and left alone.
 
 The widget mirrors this report. With the binary missing, it stays in the bar
 with an urgent `!` badge, and its popup card explains the state and re-checks

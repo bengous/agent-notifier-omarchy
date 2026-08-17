@@ -2,6 +2,7 @@ use super::*;
 use crate::event::store::with_state_update;
 use crate::event::{append_and_trim, AgentEvent, EventStatus, FocusOutcome, SourceWindow};
 use crate::hook_failure_exit_code;
+use crate::setup::{WireChange, WireOutcome, WireTarget};
 use crate::test_fixtures::{event_with_address, wired_probe, workspace, FakeDeps};
 use serde_json::Value;
 use std::collections::HashSet;
@@ -30,6 +31,14 @@ fn hook_failures_never_block_an_agent_turn() {
 #[test]
 fn hook_failure_exit_codes_follow_verified_harness_policy() {
     assert_eq!(hook_failure_exit_code(&CliCommand::ClaudeHook), 1);
+    assert_eq!(
+        hook_failure_exit_code(&CliCommand::Setup(WireTarget::Claude)),
+        1
+    );
+    assert_eq!(
+        hook_failure_exit_code(&CliCommand::SetupRemove(WireTarget::Codex)),
+        1
+    );
     for command in [CliCommand::Hook, CliCommand::PiHook, CliCommand::StatusJson] {
         assert_eq!(hook_failure_exit_code(&command), 0);
     }
@@ -486,6 +495,83 @@ fn prune_stale_drops_the_events_whose_window_is_gone() -> Result<(), Box<dyn Err
         .map(|event| event.id)
         .collect::<Vec<_>>();
     assert_eq!(ids, ["alive"]);
+    Ok(())
+}
+
+#[test]
+fn setup_prints_the_outcome_the_engine_reports() -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
+    let deps = FakeDeps {
+        wire_outcome: Ok(WireOutcome {
+            config_path: "/repo/home/.claude/settings.json".to_owned(),
+            change: WireChange::Wired,
+        }),
+        ..fake(&dir)
+    };
+
+    assert_eq!(run(&CliCommand::Setup(WireTarget::Claude), &deps)?, 0);
+
+    assert_eq!(
+        deps.wire_calls.borrow().as_slice(),
+        [(WireTarget::Claude, WireAction::Wire)]
+    );
+    assert_eq!(
+        deps.printed(),
+        "Claude wired (/repo/home/.claude/settings.json)"
+    );
+    Ok(())
+}
+
+#[test]
+fn setup_remove_carries_the_remove_action_to_the_engine() -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
+    let deps = FakeDeps {
+        wire_outcome: Ok(WireOutcome {
+            config_path: "/repo/home/.codex/config.toml".to_owned(),
+            change: WireChange::Removed,
+        }),
+        ..fake(&dir)
+    };
+
+    assert_eq!(run(&CliCommand::SetupRemove(WireTarget::Codex), &deps)?, 0);
+
+    assert_eq!(
+        deps.wire_calls.borrow().as_slice(),
+        [(WireTarget::Codex, WireAction::Remove)]
+    );
+    assert_eq!(
+        deps.printed(),
+        "Codex hook removed (/repo/home/.codex/config.toml)"
+    );
+    Ok(())
+}
+
+#[test]
+fn a_refused_wiring_propagates_and_prints_nothing() -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
+    let deps = FakeDeps {
+        wire_outcome: Err("Claude is not on PATH; install it first".to_owned()),
+        ..fake(&dir)
+    };
+
+    let error = run(&CliCommand::Setup(WireTarget::Claude), &deps)
+        .err()
+        .ok_or("a refused wiring reported success")?;
+
+    assert!(error.to_string().contains("is not on PATH"));
+    assert_eq!(deps.printed(), "");
+    Ok(())
+}
+
+#[test]
+fn a_setup_without_a_supported_harness_is_a_usage_error() -> Result<(), Box<dyn Error>> {
+    let dir = tempdir()?;
+    let deps = fake(&dir);
+
+    assert_eq!(run(&CliCommand::SetupMissing, &deps)?, 2);
+    assert_eq!(run(&CliCommand::SetupUnsupported, &deps)?, 2);
+
+    assert!(deps.wire_calls.borrow().is_empty());
     Ok(())
 }
 

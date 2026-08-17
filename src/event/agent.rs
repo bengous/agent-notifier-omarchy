@@ -6,6 +6,12 @@ pub(crate) enum Agent {
 }
 
 impl Agent {
+    pub(crate) fn from_id(id: &str) -> Option<Self> {
+        [Self::Claude, Self::Codex, Self::Pi]
+            .into_iter()
+            .find(|agent| agent.id() == id)
+    }
+
     pub(crate) fn display_name(self) -> &'static str {
         match self {
             Self::Claude => "Claude",
