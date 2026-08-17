@@ -1,6 +1,6 @@
 use super::*;
 use crate::event::{append_and_trim, set_event_status, EventStatus};
-use crate::test_fixtures::{base_event, event_with_address, fixture_clock};
+use crate::test_fixtures::{base_event, event_with_address, fixture_clock, v1_state_json};
 use tempfile::tempdir;
 
 #[test]
@@ -50,16 +50,13 @@ fn mark_read_persists_the_read_status() -> Result<(), Box<dyn std::error::Error>
 fn keeps_unknown_fields_across_state_rewrites() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempdir()?;
     let path = dir.path().join("events.json");
-    let raw = r#"{"version":1,"rootExtra":"root-kept","events":[{"id":"e","agent":"claude",
-        "kind":"main","projectName":"p","projectPath":"/repo/dotfiles","cwd":"/repo/dotfiles",
-        "sessionId":"s","createdAt":"2026-07-26T08:00:00.000Z",
-        "workspace":{"id":1,"name":"1","monitor":"DP-3","clientPid":42,"title":"t",
-            "workspaceExtra":"workspace-kept"},
-        "status":"unread","eventExtra":"event-kept"}]}"#;
-    fs::write(&path, raw)?;
-    let now = fixture_clock();
+    let mut raw = v1_state_json();
+    raw["rootExtra"] = "root-kept".into();
+    raw["events"][0]["eventExtra"] = "event-kept".into();
+    raw["events"][0]["workspace"]["workspaceExtra"] = "workspace-kept".into();
+    fs::write(&path, raw.to_string())?;
 
-    with_state_update(&path, now, |state| {
+    with_state_update(&path, fixture_clock(), |state| {
         set_event_status(state, "e", EventStatus::Read)
     })?;
 

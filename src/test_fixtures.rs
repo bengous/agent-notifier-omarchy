@@ -19,6 +19,32 @@ pub(crate) fn fixture_clock() -> DateTime<Utc> {
     DateTime::UNIX_EPOCH + Duration::from_secs(1_778_061_600)
 }
 
+/// One event in the frozen `events.json` v1 shape, spelled key by key: a field
+/// added to the Rust types must not silently enter the v1 fixture.
+pub(crate) fn v1_state_json() -> serde_json::Value {
+    serde_json::json!({
+        "version": 1,
+        "events": [{
+            "id": "e",
+            "agent": "claude",
+            "kind": "main",
+            "projectName": "p",
+            "projectPath": "/repo/dotfiles",
+            "cwd": "/repo/dotfiles",
+            "sessionId": "s",
+            "createdAt": "2026-07-26T08:00:00.000Z",
+            "workspace": {
+                "id": 1,
+                "name": "1",
+                "monitor": "DP-3",
+                "clientPid": 42,
+                "title": "t"
+            },
+            "status": "unread"
+        }]
+    })
+}
+
 fn no_process_is_alive(_process: &ProcessRef) -> bool {
     false
 }

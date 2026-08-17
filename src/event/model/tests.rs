@@ -2,6 +2,7 @@ use super::*;
 use crate::display::event_label;
 use crate::test_fixtures::{
     base_event, event_with_address, event_with_candidates, event_with_source_process, state_of,
+    v1_state_json,
 };
 
 #[test]
@@ -12,12 +13,7 @@ fn rejects_invalid_state_shape() {
 
 #[test]
 fn parses_v1_state_without_a_project_key() -> Result<(), Box<dyn std::error::Error>> {
-    let raw = r#"{"version":1,"events":[{"id":"e","agent":"claude","kind":"main",
-        "projectName":"p","projectPath":"/repo/dotfiles","cwd":"/repo/dotfiles",
-        "sessionId":"s","createdAt":"2026-07-26T08:00:00.000Z",
-        "workspace":{"id":1,"name":"1","monitor":"DP-3","clientPid":42,"title":"t"},
-        "status":"unread"}]}"#;
-    let state = parse_state(raw)?;
+    let state = parse_state(&v1_state_json().to_string())?;
 
     assert_eq!(
         state
@@ -31,24 +27,14 @@ fn parses_v1_state_without_a_project_key() -> Result<(), Box<dyn std::error::Err
 
 #[test]
 fn parses_v1_state_without_client_address() -> Result<(), Box<dyn std::error::Error>> {
-    let raw = r#"{"version":1,"events":[{"id":"e","agent":"claude","kind":"main",
-        "projectName":"p","projectPath":"/repo/dotfiles","cwd":"/repo/dotfiles",
-        "sessionId":"s","createdAt":"2026-07-26T08:00:00.000Z",
-        "workspace":{"id":1,"name":"1","monitor":"DP-3","clientPid":42,"title":"t"},
-        "status":"unread"}]}"#;
-    let state = parse_state(raw)?;
+    let state = parse_state(&v1_state_json().to_string())?;
     assert_eq!(state.events.len(), 1);
     Ok(())
 }
 
 #[test]
 fn parses_v1_state_without_session_title() -> Result<(), Box<dyn std::error::Error>> {
-    let raw = r#"{"version":1,"events":[{"id":"e","agent":"claude","kind":"main",
-        "projectName":"p","projectPath":"/repo/dotfiles","cwd":"/repo/dotfiles",
-        "sessionId":"s","createdAt":"2026-07-26T08:00:00.000Z",
-        "workspace":{"id":1,"name":"1","monitor":"DP-3","clientPid":42,"title":"t"},
-        "status":"unread"}]}"#;
-    let state = parse_state(raw)?;
+    let state = parse_state(&v1_state_json().to_string())?;
 
     assert_eq!(
         state
@@ -64,13 +50,9 @@ fn parses_v1_state_without_session_title() -> Result<(), Box<dyn std::error::Err
 #[test]
 fn a_parsed_v1_workspace_without_the_candidate_list_falls_back_to_the_primary(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let raw = r#"{"version":1,"events":[{"id":"e","agent":"claude","kind":"main",
-        "projectName":"p","projectPath":"/repo/dotfiles","cwd":"/repo/dotfiles",
-        "sessionId":"s","createdAt":"2026-07-26T08:00:00.000Z",
-        "workspace":{"id":1,"name":"1","monitor":"DP-3","clientPid":42,
-            "clientAddress":"0xbeef","title":"t"},
-        "status":"unread"}]}"#;
-    let state = parse_state(raw)?;
+    let mut raw = v1_state_json();
+    raw["events"][0]["workspace"]["clientAddress"] = "0xbeef".into();
+    let state = parse_state(&raw.to_string())?;
     let workspace = state
         .events
         .first()
