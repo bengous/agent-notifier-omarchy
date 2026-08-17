@@ -4,7 +4,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::path::Path;
 
-use crate::state::{AgentEvent, EventStatus, SourceWindow};
+use crate::event::{AgentEvent, EventStatus, SourceWindow};
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub(crate) struct PiHookInput {

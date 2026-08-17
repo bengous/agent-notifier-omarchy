@@ -1,3 +1,5 @@
+pub(crate) mod store;
+
 use serde::{Deserialize, Serialize};
 
 pub(crate) const STATE_LIMIT: usize = 50;

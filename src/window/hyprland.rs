@@ -6,8 +6,8 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-use crate::process::command_output;
-use crate::state::{AgentEvent, FocusOutcome, ProcessRef, SourceWindow};
+use crate::event::{AgentEvent, FocusOutcome, ProcessRef, SourceWindow};
+use crate::exec::command_output;
 
 #[derive(Debug, Clone, Deserialize)]
 struct HyprWorkspace {

@@ -8,8 +8,8 @@ use std::io::Read;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::process::command_output;
-use crate::state::{AgentEvent, EventStatus, SourceWindow};
+use crate::event::{AgentEvent, EventStatus, SourceWindow};
+use crate::exec::command_output;
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub(crate) struct StopHookInput {

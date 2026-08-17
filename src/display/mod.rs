@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::Path;
 
-use crate::state::{dedupe_events, AgentEvent, EventStatus};
+use crate::event::{dedupe_events, AgentEvent, EventStatus};
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub(crate) struct DisplayAgentEvent {

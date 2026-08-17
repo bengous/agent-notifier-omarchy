@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::state::{empty_state, parse_state, AgentNotifierState};
+use crate::event::{empty_state, parse_state, AgentNotifierState};
 
 pub(crate) fn state_path() -> io::Result<PathBuf> {
     let home = state_home_from(
@@ -159,7 +159,7 @@ fn current_millis() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{set_event_status, EventStatus};
+    use crate::event::{set_event_status, EventStatus};
     use tempfile::tempdir;
 
     #[test]

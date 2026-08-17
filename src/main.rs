@@ -1,15 +1,11 @@
-mod cli;
-mod commands;
-mod hyprland;
-mod pi_event;
-mod presentation;
-mod process;
-mod session_title;
-mod state;
-mod stop_event;
-mod storage;
+mod app;
+mod display;
+mod event;
+mod exec;
+mod intake;
+mod window;
 
-use cli::CliCommand;
+use app::cli::CliCommand;
 
 const UNAVAILABLE_STATUS_JSON: &str =
     r#"{"text":"agents !","tooltip":"Agent notifier unavailable","class":"error"}"#;
@@ -34,7 +30,7 @@ fn hook_failure_exit_code(command: &CliCommand) -> i32 {
 
 fn main() {
     let command = CliCommand::from_env();
-    match commands::run() {
+    match app::run() {
         Ok(code) => std::process::exit(code),
         Err(error) => {
             eprintln!("agent-notifier: {error}");

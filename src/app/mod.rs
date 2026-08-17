@@ -1,3 +1,5 @@
+pub(crate) mod cli;
+
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::collections::HashSet;
@@ -8,23 +10,24 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
-use crate::cli::CliCommand;
-use crate::pi_event::{build_pi_event, parse_pi_hook_input};
-use crate::presentation::{
+use crate::app::cli::CliCommand;
+use crate::display::{
     build_info, display_state_from_events, event_label, status_output, BuildInfo, StatusOutput,
 };
-use crate::process::{run_command, run_command_owned, DEFAULT_TIMEOUT};
-use crate::state::{
+use crate::event::store::{read_state_or_recover, state_path, with_state_update};
+use crate::event::{
     append_and_trim, clear_read_events, dedupe_events, empty_state, set_event_status,
     set_window_address_read, state_has_unread_for_address, AgentEvent, AgentNotifierState,
     EventStatus, FocusOutcome, SourceWindow,
 };
-use crate::stop_event::{
+use crate::exec::{run_command, run_command_owned, DEFAULT_TIMEOUT};
+use crate::intake::pi_event::{build_pi_event, parse_pi_hook_input};
+use crate::intake::session_title;
+use crate::intake::stop_event::{
     build_stop_event, current_git_branch, parse_stop_hook_input, project_root, random_hex,
     repository_key, StopHookInput,
 };
-use crate::storage::{read_state_or_recover, state_path, with_state_update};
-use crate::{hyprland, session_title};
+use crate::window::hyprland;
 use crate::{STATUS_ERROR_CLASS, UNAVAILABLE_STATUS_JSON, UNAVAILABLE_STATUS_TOOLTIP};
 
 fn set_focused_window_read(state: AgentNotifierState) -> AgentNotifierState {

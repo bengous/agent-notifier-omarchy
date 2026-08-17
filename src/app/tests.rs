@@ -1,7 +1,7 @@
 use super::*;
-use crate::pi_event::PiHookInput;
-use crate::state::parse_state;
-use crate::{hook_failure_exit_code, presentation, state};
+use crate::event::parse_state;
+use crate::intake::pi_event::PiHookInput;
+use crate::{display, event, hook_failure_exit_code};
 use std::ffi::OsStr;
 use std::fs;
 use tempfile::tempdir;
@@ -200,8 +200,8 @@ fn display_state_exposes_exactly_the_keys_the_widget_reads() {
     assert!(!event["workspace"]["name"].is_null());
 }
 
-fn build_info_fixture(state_path: Option<&Path>) -> presentation::BuildInfo {
-    presentation::build_info(
+fn build_info_fixture(state_path: Option<&Path>) -> display::BuildInfo {
+    display::build_info(
         "agent-notifier",
         "0.3.0",
         "abc1234",
@@ -246,14 +246,14 @@ fn version_json_without_a_state_path_keeps_the_v1_keys() -> Result<(), Box<dyn s
 
 #[test]
 fn build_info_reports_dirty_only_when_the_tree_is_modified() {
-    let dirty = |flag: &str| presentation::build_info("n", "v", "c", flag, "d", None).dirty;
+    let dirty = |flag: &str| display::build_info("n", "v", "c", flag, "d", None).dirty;
 
     assert!(dirty("true"));
     assert!(!dirty("false"));
     assert!(!dirty(""));
     assert!(!dirty("garbage"));
 
-    let fallback = presentation::build_info("n", "v", "unknown", "false", "unknown", None);
+    let fallback = display::build_info("n", "v", "unknown", "false", "unknown", None);
     assert_eq!(fallback.commit, "unknown");
     assert_eq!(fallback.commit_date, "unknown");
 }
@@ -433,7 +433,7 @@ fn stores_pi_events_as_main_agent_events() -> Result<(), Box<dyn std::error::Err
 
 #[test]
 fn rejects_invalid_state_shape() {
-    let result = state::parse_state(r#"{"version":1,"events":[{"id":"missing-fields"}]}"#);
+    let result = event::parse_state(r#"{"version":1,"events":[{"id":"missing-fields"}]}"#);
     assert!(result.is_err());
 }
 
@@ -624,7 +624,7 @@ fn prune_stale_keeps_only_events_with_an_existing_source_window(
 #[test]
 fn uses_cleaned_hyprland_title_with_branch_fallback() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(
-        presentation::clean_window_title("⠴ dotfiles | main"),
+        display::clean_window_title("⠴ dotfiles | main"),
         "dotfiles | main"
     );
     assert_eq!(event_label(&base_event()), "dotfiles | main");
@@ -656,8 +656,8 @@ fn uses_cleaned_hyprland_title_with_branch_fallback() -> Result<(), Box<dyn std:
 
 #[test]
 fn formats_agent_button_label() {
-    assert_eq!(presentation::format_agent_button(0), "agents");
-    assert_eq!(presentation::format_agent_button(3), "agents 󰂚 3");
+    assert_eq!(display::format_agent_button(0), "agents");
+    assert_eq!(display::format_agent_button(3), "agents 󰂚 3");
 }
 
 #[test]
@@ -905,7 +905,7 @@ fn includes_only_events_matching_live_hyprland_addresses() {
     assert_eq!(status_output(&focusable).text, "agents 󰂚 1");
 }
 
-fn event_with_source_process(id: &str, process: state::ProcessRef) -> AgentEvent {
+fn event_with_source_process(id: &str, process: event::ProcessRef) -> AgentEvent {
     let mut base = event_with_address(id, 4682, "0xguess");
     if let Some(workspace) = &mut base.workspace {
         workspace.source_process = Some(process);
@@ -913,8 +913,8 @@ fn event_with_source_process(id: &str, process: state::ProcessRef) -> AgentEvent
     base
 }
 
-fn own_process_ref() -> Result<state::ProcessRef, Box<dyn std::error::Error>> {
-    crate::hyprland::process_ref(i64::from(std::process::id()))
+fn own_process_ref() -> Result<event::ProcessRef, Box<dyn std::error::Error>> {
+    crate::window::hyprland::process_ref(i64::from(std::process::id()))
         .ok_or_else(|| "no process ref for the test process".into())
 }
 
@@ -933,7 +933,7 @@ fn an_event_with_a_live_source_process_stays_focusable_without_live_addresses(
 fn an_event_with_a_dead_source_process_is_pruned_despite_live_candidates(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let own = own_process_ref()?;
-    let dead = state::ProcessRef {
+    let dead = event::ProcessRef {
         start_time: own.start_time.wrapping_add(1),
         ..own
     };
@@ -951,7 +951,7 @@ fn a_source_process_serializes_additively() -> Result<(), Box<dyn std::error::Er
     let legacy_json = serde_json::to_string(&event_with_address("legacy", 1, "0xbeef"))?;
     assert!(!legacy_json.contains("sourceProcess"));
 
-    let process = state::ProcessRef {
+    let process = event::ProcessRef {
         pid: 146_082,
         start_time: 737_679,
     };
