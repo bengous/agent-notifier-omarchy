@@ -27,6 +27,7 @@ codegen-units = 1
 unsafe_code = "forbid"
 warnings = "deny"
 missing_debug_implementations = "deny"
+unreachable_pub = "deny"
 
 [lints.clippy]
 all = "deny"

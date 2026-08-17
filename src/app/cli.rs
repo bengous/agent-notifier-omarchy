@@ -27,7 +27,7 @@ impl CliCommand {
         Self::from_args(std::env::args().skip(1))
     }
 
-    pub(crate) fn from_args<I>(args: I) -> Self
+    fn from_args<I>(args: I) -> Self
     where
         I: IntoIterator<Item = String>,
     {

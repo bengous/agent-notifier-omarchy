@@ -63,7 +63,7 @@ pub(crate) fn build_info(
     }
 }
 
-pub(crate) fn clean_window_title(title: &str) -> String {
+fn clean_window_title(title: &str) -> String {
     title
         .trim_start_matches(|character: char| {
             character.is_whitespace()
@@ -133,14 +133,14 @@ fn format_tooltip(events: &[AgentEvent]) -> String {
         .join("\n")
 }
 
-pub(crate) fn format_created_at(created_at: &str) -> String {
+fn format_created_at(created_at: &str) -> String {
     DateTime::parse_from_rfc3339(created_at).map_or_else(
         |_| created_at.to_owned(),
         |timestamp| timestamp.format("%b %-d, %Y %-I:%M %p UTC").to_string(),
     )
 }
 
-pub(crate) fn format_agent_button(unread_count: usize) -> String {
+fn format_agent_button(unread_count: usize) -> String {
     if unread_count == 0 {
         return "agents".to_owned();
     }

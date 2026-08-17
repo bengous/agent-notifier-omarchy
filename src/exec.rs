@@ -14,7 +14,7 @@ where
     command_output_with_timeout(argv, DEFAULT_TIMEOUT)
 }
 
-pub(crate) fn command_output_with_timeout<I, S>(argv: I, timeout: Duration) -> Option<String>
+fn command_output_with_timeout<I, S>(argv: I, timeout: Duration) -> Option<String>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,

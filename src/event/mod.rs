@@ -2,7 +2,7 @@ pub(crate) mod store;
 
 use serde::{Deserialize, Serialize};
 
-pub(crate) const STATE_LIMIT: usize = 50;
+const STATE_LIMIT: usize = 50;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
