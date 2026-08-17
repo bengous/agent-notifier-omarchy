@@ -33,7 +33,8 @@ mkdir -p "${WORK_DIR}/state/agent-notifier"
 
 # A completion is listed only while its source process lives, so the fixture
 # windows borrow this shell.
-jq --argjson pid "$$" --argjson start "$(process_start_time $$)" \
+start_time=$(process_start_time "$$")
+jq --argjson pid "$$" --argjson start "${start_time}" \
   '.events |= map(.workspace.sourceProcess = {pid: $pid, startTime: $start})' \
   "${QML_DIR}/fixtures/events-v1.json" >"${WORK_DIR}/state/agent-notifier/events.json"
 

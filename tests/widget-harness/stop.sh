@@ -15,6 +15,7 @@ stop_process() {
   local name=$1 file=${RUN_DIR}/$1.pid pid deadline
   [[ -f ${file} ]] || return 0
   pid=$(<"${file}")
+  [[ -n ${pid} ]] || return 0
   kill "${pid}" 2>/dev/null || true
   deadline=$((SECONDS + 5))
   while kill -0 "${pid}" 2>/dev/null; do
@@ -28,9 +29,11 @@ stop_process() {
 }
 
 drop_quickshell_runtime() {
-  local file=${RUN_DIR}/quickshell.pid link target
+  local file=${RUN_DIR}/quickshell.pid pid link target
   [[ -f ${file} ]] || return 0
-  link=${RUNTIME_DIR}/quickshell/by-pid/$(<"${file}")
+  pid=$(<"${file}")
+  [[ -n ${pid} ]] || return 0
+  link=${RUNTIME_DIR}/quickshell/by-pid/${pid}
   target=$(readlink "${link}" 2>/dev/null || true)
   [[ -n ${target} ]] && rm -rf -- "${target}"
   rm -f -- "${link}"

@@ -42,13 +42,20 @@ Usage: tests/widget-harness/run.sh [--events N] [--out FILE] [--keep]
 EOF
 }
 
+fail() {
+  echo "agent-notifier: $1" >&2
+  exit 1
+}
+
 while (($#)); do
   case $1 in
     --events)
+      (($# >= 2)) || fail "$1 needs a value"
       event_count=$2
       shift 2
       ;;
     --out)
+      (($# >= 2)) || fail "$1 needs a value"
       screenshot=$2
       shift 2
       ;;
@@ -67,11 +74,6 @@ while (($#)); do
       ;;
   esac
 done
-
-fail() {
-  echo "agent-notifier: $1" >&2
-  exit 1
-}
 
 on_exit() {
   local status=$? artifacts
@@ -156,13 +158,18 @@ write_fixtures() {
           '{cwd:$cwd, session_id:$id}' >"${payload}.json"
         echo pi-hook >"${payload}.cmd"
         ;;
+      *)
+        fail "no fixture recipe for agent ${agent}"
+        ;;
     esac
   done
 }
 write_fixtures
 
+shopt -s nullglob
+
 host_display="${WAYLAND_DISPLAY:-wayland-1}"
-existing_instances=$(ls "${RUNTIME_DIR}/hypr" 2>/dev/null || true)
+existing_instances=("${RUNTIME_DIR}"/hypr/*/)
 
 env -u HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY="${host_display}" \
   AQ_DRM_DEVICES=/dev/null \
@@ -171,11 +178,13 @@ env -u HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY="${host_display}" \
 echo $! >"${RUN_DIR}/hyprland.pid"
 
 find_instance() {
-  local name
-  for name in $(ls "${RUNTIME_DIR}/hypr" 2>/dev/null || true); do
-    grep -qxF "${name}" <<<"${existing_instances}" && continue
-    [[ -S ${RUNTIME_DIR}/hypr/${name}/.socket.sock ]] || continue
-    echo "${name}" >"${RUN_DIR}/instance"
+  local path known
+  for path in "${RUNTIME_DIR}"/hypr/*/; do
+    for known in "${existing_instances[@]}"; do
+      [[ ${path} == "${known}" ]] && continue 2
+    done
+    [[ -S ${path}.socket.sock ]] || continue
+    basename -- "${path}" >"${RUN_DIR}/instance"
     return 0
   done
   return 1
@@ -224,9 +233,11 @@ wait_for "the injector window" 30 injector_is_mapped
 # The terminal can ask for activation again after it maps, so the move is
 # re-asserted until the compositor reports no focused window at all.
 park_injector() {
-  hyprctl dispatch movetoworkspacesilent \
-    "${INJECTOR_WORKSPACE},address:$(injector_address)" >/dev/null
-  [[ -z $(hyprctl -j activewindow | jq -r '.address // ""') ]]
+  local address focused
+  address=$(injector_address)
+  hyprctl dispatch movetoworkspacesilent "${INJECTOR_WORKSPACE},address:${address}" >/dev/null
+  focused=$(hyprctl -j activewindow | jq -r '.address // ""')
+  [[ -z ${focused} ]]
 }
 wait_for "the injector window to leave the focus" 30 park_injector
 
@@ -235,6 +246,8 @@ injection_is_done() { [[ -f ${RUN_DIR}/injected ]]; }
 wait_for "the fixture completions" 60 injection_is_done
 
 stored=$(env "${harness_env[@]}" agent-notifier list-json | jq '.events | length')
+[[ ${stored} =~ ^[0-9]+$ ]] ||
+  fail "list-json returned no count; see ${RUN_DIR}/injector.log"
 ((stored == event_count)) ||
   fail "the binary stored ${stored} of ${event_count} completions; see ${RUN_DIR}/injector.log"
 
@@ -277,7 +290,8 @@ sleep 0.5
 # grim rejects -o together with -g.
 env WAYLAND_DISPLAY="${nested_display}" grim -o "${monitor}" "${screenshot}"
 [[ -s ${screenshot} ]] || fail "grim wrote no screenshot"
-(($(stat -c %s -- "${screenshot}") > MINIMUM_SCREENSHOT_BYTES)) || fail "the screenshot is empty"
+screenshot_bytes=$(stat -c %s -- "${screenshot}")
+((screenshot_bytes > MINIMUM_SCREENSHOT_BYTES)) || fail "the screenshot is empty"
 
 echo "harness: ${event_count} completions injected, popup captured on ${monitor} (${monitor_size})"
 echo "harness: screenshot ${screenshot}"
