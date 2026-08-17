@@ -21,7 +21,7 @@ use crate::event::{
 use crate::exec::{run_command, run_command_owned, DEFAULT_TIMEOUT};
 use crate::intake;
 use crate::window::{hyprland, proc};
-use crate::{STATUS_ERROR_CLASS, UNAVAILABLE_STATUS_JSON, UNAVAILABLE_STATUS_TOOLTIP};
+use crate::{STATUS_ERROR_CLASS, UNAVAILABLE_STATUS_TOOLTIP};
 
 fn mark_address_read(address: &str, now: DateTime<Utc>) -> io::Result<()> {
     let _ = with_state_update(&state_path()?, now, |state| {
@@ -174,8 +174,7 @@ fn handle_status_json() -> io::Result<()> {
         read_state_with_focused_window_read(&state_path()?, focused.as_deref(), Utc::now())?;
     let output = std::panic::catch_unwind(|| format_status(&state))
         .unwrap_or_else(|_| unavailable_status_output());
-    print_json(&output);
-    Ok(())
+    print_json(&output)
 }
 
 fn handle_focused_window_read() -> io::Result<()> {
@@ -211,13 +210,12 @@ fn focus_event(event: Option<&AgentEvent>, target: &str) -> io::Result<i32> {
     }
 }
 
-fn print_json<T: Serialize>(value: &T) {
-    match serde_json::to_string(value) {
-        Ok(json) => println!("{json}"),
-        Err(_) => {
-            println!("{UNAVAILABLE_STATUS_JSON}");
-        }
-    }
+/// A serialization failure propagates: a shaped fallback here would lie to
+/// every consumer except status-json, whose degradation lives in main.
+fn print_json<T: Serialize>(value: &T) -> io::Result<()> {
+    let json = serde_json::to_string(value).map_err(io::Error::other)?;
+    println!("{json}");
+    Ok(())
 }
 
 fn crate_build_info() -> BuildInfo {
@@ -278,7 +276,7 @@ pub(crate) fn run() -> io::Result<i32> {
         CliCommand::StatusJson => handle_status_json().map(|()| 0),
         // TODO(contract): no known consumer — retire or test before v1.
         CliCommand::ListJson => {
-            print_json(&read_state(&state_path()?, Utc::now())?);
+            print_json(&read_state(&state_path()?, Utc::now())?)?;
             Ok(0)
         }
         CliCommand::ListDisplayJson => {
@@ -291,11 +289,11 @@ pub(crate) fn run() -> io::Result<i32> {
             print_json(&display_state_from_events(
                 state.version,
                 focusable_events(&state.events),
-            ));
+            ))?;
             Ok(0)
         }
         CliCommand::VersionJson => {
-            print_json(&crate_build_info());
+            print_json(&crate_build_info())?;
             Ok(0)
         }
         // TODO(contract): no known consumer — retire or test before v1.

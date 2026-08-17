@@ -39,6 +39,19 @@ fn hook_failure_exit_codes_follow_verified_harness_policy() {
     }
 }
 
+struct FailingJson;
+
+impl Serialize for FailingJson {
+    fn serialize<S: serde::Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom("unserializable"))
+    }
+}
+
+#[test]
+fn a_serialization_failure_propagates_instead_of_printing_a_status_shape() {
+    assert!(print_json(&FailingJson).is_err());
+}
+
 #[test]
 fn a_read_query_marks_the_focused_windows_events_read() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempdir()?;
