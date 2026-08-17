@@ -40,7 +40,8 @@ jq --argjson pid "$$" --argjson start "${start_time}" \
 
 # The setup probe reads PATH, HOME and CODEX_HOME. A controlled sandbox —
 # one stub harness binary, one wired settings.json — keeps the generated
-# contract document independent of the machine that runs the gate.
+# contract document independent of the machine that runs the gate
+# (listenerLive excepted: it scans /proc, and no test asserts its value).
 mkdir -p "${WORK_DIR}/bin" "${WORK_DIR}/home/.claude"
 ln -s "${REPO_DIR}/target/debug/agent-notifier" "${WORK_DIR}/bin/agent-notifier"
 printf '#!/bin/sh\nexit 0\n' >"${WORK_DIR}/bin/claude"
