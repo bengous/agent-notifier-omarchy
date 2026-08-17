@@ -12,7 +12,7 @@ use crate::app::cli::CliCommand;
 use crate::display::{
     build_info, display_state_from_events, event_label, status_output, BuildInfo, StatusOutput,
 };
-use crate::event::store::{read_state_or_recover, state_path, with_state_update};
+use crate::event::store::{read_state, state_path, with_state_update};
 use crate::event::{
     append_and_trim, capture_decision, clear_read_events, empty_state,
     mark_focused_window_events_read, prune_stale_events, set_event_status, Agent, AgentEvent,
@@ -278,7 +278,7 @@ pub(crate) fn run() -> io::Result<i32> {
         CliCommand::StatusJson => handle_status_json().map(|()| 0),
         // TODO(contract): no known consumer — retire or test before v1.
         CliCommand::ListJson => {
-            print_json(&read_state_or_recover(&state_path()?, Utc::now())?);
+            print_json(&read_state(&state_path()?, Utc::now())?);
             Ok(0)
         }
         CliCommand::ListDisplayJson => {
@@ -300,7 +300,7 @@ pub(crate) fn run() -> io::Result<i32> {
         }
         // TODO(contract): no known consumer — retire or test before v1.
         CliCommand::FocusLatest => {
-            let state = read_state_or_recover(&state_path()?, Utc::now())?;
+            let state = read_state(&state_path()?, Utc::now())?;
             let focusable = focusable_events(&state.events);
             let event = focusable
                 .iter()
@@ -308,7 +308,7 @@ pub(crate) fn run() -> io::Result<i32> {
             focus_event(event, "the latest unread event")
         }
         CliCommand::FocusId(id) => {
-            let state = read_state_or_recover(&state_path()?, Utc::now())?;
+            let state = read_state(&state_path()?, Utc::now())?;
             let event = state.events.iter().find(|event| event.id == id);
             focus_event(event, &id)
         }

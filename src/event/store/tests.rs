@@ -106,8 +106,26 @@ fn propagates_an_unreadable_state_file() -> Result<(), Box<dyn std::error::Error
     let path = dir.path().join("events.json");
     // A directory where the state file belongs: reading it is an error, not "empty".
     fs::create_dir(&path)?;
-    let now = DateTime::from_timestamp_millis(0).unwrap_or_else(Utc::now);
-    assert!(read_state_or_recover(&path, now).is_err());
+    assert!(read_state(&path, fixture_clock()?).is_err());
+    Ok(())
+}
+
+#[test]
+fn a_read_quarantines_a_corrupt_state_only_under_the_store_lock(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempdir()?;
+    let path = dir.path().join("events.json");
+    fs::write(&path, "{bad json")?;
+    let now = fixture_clock()?;
+    let held = acquire_lock(&path)?;
+
+    assert!(read_state(&path, now).is_err());
+    assert!(path.exists());
+    drop(held);
+
+    assert_eq!(read_state(&path, now)?, empty_state());
+    assert!(!path.exists());
+    assert_eq!(read_state(&path, now)?, empty_state());
     Ok(())
 }
 
@@ -150,7 +168,7 @@ fn read_replaces_a_legacy_lock_directory_without_rewriting_state(
     fs::create_dir(&lock_path)?;
     thread::sleep(Duration::from_millis(20));
 
-    let state = read_state_or_recover(&path, now)?;
+    let state = read_state(&path, now)?;
 
     assert_eq!(state, empty_state());
     assert!(fs::symlink_metadata(lock_path)?.is_file());

@@ -18,13 +18,15 @@ pub(crate) fn state_path() -> io::Result<PathBuf> {
     Ok(home.join("agent-notifier/events.json"))
 }
 
-pub(crate) fn read_state_or_recover(
-    path: &Path,
-    now: DateTime<Utc>,
-) -> io::Result<AgentNotifierState> {
-    if let Err(error) = migrate_legacy_lock_directory(path) {
-        eprintln!("agent-notifier: legacy lock migration failed: {error}");
-    }
+/// Quarantining a corrupt file renames it, so even a plain read runs under the
+/// store lock: two concurrent readers must not race the rename.
+pub(crate) fn read_state(path: &Path, now: DateTime<Utc>) -> io::Result<AgentNotifierState> {
+    create_state_dir(path)?;
+    let _guard = acquire_lock(path)?;
+    read_state_or_recover(path, now)
+}
+
+fn read_state_or_recover(path: &Path, now: DateTime<Utc>) -> io::Result<AgentNotifierState> {
     let raw = match fs::read_to_string(path) {
         Ok(raw) => raw,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(empty_state()),
@@ -52,8 +54,7 @@ pub(crate) fn with_state_update<F>(
 where
     F: FnOnce(AgentNotifierState) -> AgentNotifierState,
 {
-    let dir = path.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(dir)?;
+    create_state_dir(path)?;
     let _guard = acquire_lock(path)?;
     let current = read_state_or_recover(path, now)?;
     let next = update(current.clone());
@@ -61,6 +62,10 @@ where
         write_state_atomic(path, &next)?;
     }
     Ok(next)
+}
+
+fn create_state_dir(path: &Path) -> io::Result<()> {
+    fs::create_dir_all(path.parent().unwrap_or_else(|| Path::new(".")))
 }
 
 fn state_home_from(xdg: Option<PathBuf>, home: Option<PathBuf>) -> io::Result<PathBuf> {
