@@ -81,7 +81,7 @@ Rectangle {
         id: agentMark
         spacing: Style.space(4)
         anchors.verticalCenter: parent.verticalCenter
-        opacity: root.unread ? 1 : 0.6
+        opacity: root.unread ? 1 : Theme.readMarkOpacity
 
         Image {
           visible: root.agentIcon !== ""
