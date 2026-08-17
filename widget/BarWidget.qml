@@ -312,6 +312,11 @@ BarWidget {
       }
 
       Item {
+        Layout.fillHeight: true
+        visible: root.face === "binary-missing" || root.face === "setup"
+      }
+
+      Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
         visible: root.face === "waiting"
