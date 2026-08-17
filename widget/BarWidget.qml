@@ -111,10 +111,14 @@ BarWidget {
     close()
   }
 
-  // The helper joins its arguments into one command and keeps the terminal
-  // open through omarchy-show-done, so doctor needs no wrapper script.
-  function launchSetupHelp() {
-    Quickshell.execDetached(["omarchy-launch-floating-terminal-with-presentation", "agent-notifier", "doctor"])
+  // The one piece of the clone the widget runs, and only on a click. The
+  // helper joins its arguments with spaces into a single `bash -c`, so it gets
+  // exactly one: the script path. Quickshell exposes no path to the plugin
+  // clone, so the script is resolved against this file.
+  function launchOnboarding() {
+    var resolved = String(Qt.resolvedUrl("../scripts/onboard.sh"))
+    var script = decodeURIComponent(resolved.replace(/^file:\/\//, ""))
+    Quickshell.execDetached(["omarchy-launch-floating-terminal-with-presentation", script])
   }
 
   implicitWidth: button.implicitWidth
@@ -138,10 +142,11 @@ BarWidget {
     onTriggered: root.nowMs = Date.now()
   }
 
-  // A missing binary is a reversible state: once it lands on PATH, the next
-  // probe succeeds and the widget recovers without a shell restart.
+  // An unfinished setup is a reversible state: once onboarding wires it, the
+  // next probe sees it. Nothing comes back from the terminal the CTA opens, so
+  // this re-probe is what observes the end of it.
   Timer {
-    running: root.cliMissing
+    running: root.needsSetup
     interval: Theme.cliReprobeMs
     repeat: true
     onTriggered: root.refresh()
@@ -308,7 +313,7 @@ BarWidget {
         fontFamily: root.fontFamily
         cliMissing: root.cliMissing
         setup: root.setup
-        onSetupHelpRequested: root.launchSetupHelp()
+        onOnboardingRequested: root.launchOnboarding()
       }
 
       Item {

@@ -38,7 +38,7 @@ ShellRoot {
       })
     }
 
-    function launchSetupHelp(): void { widget.launchSetupHelp() }
+    function launchOnboarding(): void { widget.launchOnboarding() }
   }
 
   PanelWindow {

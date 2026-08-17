@@ -14,7 +14,7 @@ Column {
   property bool cliMissing: false
   property var setup: null
 
-  signal setupHelpRequested()
+  signal onboardingRequested()
 
   readonly property var harnessRows: !cliMissing && setup ? setup.harnesses : []
   readonly property bool listenerRowVisible: !cliMissing && setup !== null && setup.listenerLive === false
@@ -45,7 +45,7 @@ Column {
     railColor: root.urgent
     fontFamily: root.fontFamily
     title: "The agent-notifier binary is not on PATH"
-    detail: "Install it first: README, section Install. The widget re-checks every "
+    detail: "Configure installs it from the latest release. The widget re-checks every "
             + Math.round(Theme.cliReprobeMs / 1000) + " s."
   }
 
@@ -78,12 +78,13 @@ Column {
     detail: "Optional: without it, focusing a window by hand does not mark its events read."
   }
 
+  // Shown on both faces: the onboarding script lives in the plugin clone, so
+  // it runs with no binary installed — that is what it installs.
   Button {
-    visible: !root.cliMissing
-    text: "Show setup steps"
+    text: "Configure"
     foreground: root.foreground
     bordered: true
     fontSize: Style.font.body
-    onClicked: root.setupHelpRequested()
+    onClicked: root.onboardingRequested()
   }
 }

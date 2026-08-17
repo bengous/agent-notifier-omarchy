@@ -56,8 +56,13 @@ omarchy plugin add https://github.com/bengous/agent-notifier-omarchy.git --enabl
 Omarchy clones this repository as-is into
 `~/.config/omarchy/plugins/io.github.bengous.agent-notifier/` and reads
 `manifest.json` at its root. The clone carries the Rust sources with it; they
-are inert. The widget never runs code from the clone — it calls the binary you
-installed in step 1.
+are inert. The widget runs exactly one file from the clone,
+`scripts/onboard.sh`, and only when you click "Configure" on its setup card;
+everything else it does goes through the binary you installed in step 1.
+Removing the plugin removes that script with it.
+
+Step 1 can also be done from the widget: install the plugin first, then click
+"Configure" in its popup.
 
 ## Remove
 
@@ -85,6 +90,8 @@ and `/usr/local/share/agent-notifier` after `install.sh`), the state directory
   typography come from omarchy's `Style.*`.
 - `widget/js/` — shared JS, one file per concept: `time.js` formats moments,
   `setup.js` coerces the setup summary. Both are tested from `tests/qml/`.
+- `scripts/onboard.sh` — the one file the widget runs from the clone, behind the
+  "Configure" button of the setup card. See [Install](#install).
 
 Prefer a plain bar module over the plugin? `agent-notifier status-json` emits
 `{"text","tooltip","class"}` for a `"type": "command"` entry in your
@@ -249,12 +256,13 @@ restores the file when the written hook does not read back. A config it cannot
 parse, or an agent-notifier block edited by hand, is reported and left alone.
 
 The widget mirrors this report. With the binary missing, it stays in the bar
-with an urgent `!` badge, and its popup card explains the state and re-checks
-every 15 seconds. With the binary present but the setup not ready, the card
-lists every harness state, and its "Show setup steps" button runs
-`agent-notifier doctor` in a floating terminal. The bar tooltip follows the
-class ladder: unread completions, then `Setup required — run: agent-notifier
-doctor`, then `Waiting for agent completions`.
+with an urgent `!` badge, and its popup card explains the state. With the
+binary present but the setup not ready, the card lists every harness state.
+Both faces carry the "Configure" button, which runs `scripts/onboard.sh` in a
+floating terminal; nothing comes back from that terminal, so the card re-checks
+every 15 seconds until the setup is ready. The bar tooltip follows the class
+ladder: unread completions, then `Setup required — run: agent-notifier doctor`,
+then `Waiting for agent completions`.
 
 ## State
 

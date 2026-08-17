@@ -52,7 +52,7 @@ Usage: tests/widget-harness/run.sh [--events N] [--out FILE] [--keep] [--scenari
   --out FILE        screenshot path (default target/widget-harness/<scenario>.png)
   --keep            leave the harness running instead of stopping it
   --scenario NAME   default, or binary-missing: no binary on PATH, setup card
-                    shown, doctor CTA logged, recovery after the binary returns
+                    shown, Configure CTA logged, recovery after the binary returns
 EOF
 }
 
@@ -150,8 +150,8 @@ fi
 # daemon, so its own notify-send shadows the real one.
 printf '#!/bin/sh\nexit 0\n' >"${RUN_DIR}/bin/notify-send"
 chmod +x "${RUN_DIR}/bin/notify-send"
-# The widget's CTA runs doctor through this helper; the harness shadows it
-# with a logger so a run never opens a terminal on the host session.
+# The widget's CTA runs the onboarding script through this helper; the harness
+# shadows it with a logger so a run never opens a terminal on the host session.
 cat >"${RUN_DIR}/bin/omarchy-launch-floating-terminal-with-presentation" <<EOF
 #!/bin/sh
 echo "\$*" >>"${RUN_DIR}/launch.log"
@@ -432,11 +432,11 @@ screenshot_bytes=$(stat -c %s -- "${screenshot}")
 ((screenshot_bytes > MINIMUM_SCREENSHOT_BYTES)) || fail "the screenshot is empty"
 
 if [[ ${scenario} == binary-missing ]]; then
-  # The verb reaches launchSetupHelp() directly; the shadowed helper turns the
+  # The verb reaches launchOnboarding() directly; the shadowed helper turns the
   # detached launch into one loggable line.
-  qs ipc --pid "${quickshell_pid}" call harness launchSetupHelp >/dev/null
-  launch_is_logged() { grep -q "agent-notifier doctor" "${RUN_DIR}/launch.log" 2>/dev/null; }
-  wait_for "the doctor launch log" 10 launch_is_logged
+  qs ipc --pid "${quickshell_pid}" call harness launchOnboarding >/dev/null
+  launch_is_logged() { grep -q "scripts/onboard.sh" "${RUN_DIR}/launch.log" 2>/dev/null; }
+  wait_for "the onboarding launch log" 10 launch_is_logged
 
   # Restoring the binary must recover the widget within one re-probe window.
   ln -s "${REPO_DIR}/target/debug/agent-notifier" "${RUN_DIR}/bin/agent-notifier"
@@ -450,7 +450,7 @@ if [[ ${scenario} == binary-missing ]]; then
   qs ipc --pid "${quickshell_pid}" call io.github.bengous.agent-notifier open >/dev/null
   wait_for "the degradation back to binary-missing" 10 cli_reported_missing
 
-  echo "harness: binary-missing journey replayed: card shown, doctor CTA logged, recovery and degradation observed"
+  echo "harness: binary-missing journey replayed: card shown, Configure CTA logged, recovery and degradation observed"
 else
   echo "harness: ${event_count} completions injected, popup captured on ${monitor} (${monitor_size})"
 fi
