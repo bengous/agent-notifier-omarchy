@@ -192,33 +192,53 @@ fn a_keyless_project_label_falls_back_to_the_project_name() {
 }
 
 #[test]
-fn uses_cleaned_hyprland_title_with_branch_fallback() -> Result<(), Box<dyn std::error::Error>> {
-    assert_eq!(clean_window_title("⠴ dotfiles | main"), "dotfiles | main");
-    assert_eq!(event_label(&base_event()), "dotfiles | main");
-    let fallback = AgentEvent {
+fn the_event_label_is_the_cleaned_window_title() -> Result<(), Box<dyn std::error::Error>> {
+    let titled = AgentEvent {
+        workspace: Some(SourceWindow {
+            title: "⠴ dotfiles | feature".to_owned(),
+            ..workspace(&base_event())?
+        }),
+        ..base_event()
+    };
+
+    assert_eq!(event_label(&titled), "dotfiles | feature");
+    Ok(())
+}
+
+#[test]
+fn an_empty_window_title_falls_back_to_the_project_and_its_branch(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let untitled = AgentEvent {
         workspace: Some(SourceWindow {
             title: String::new(),
             ..workspace(&base_event())?
         }),
         ..base_event()
     };
-    assert_eq!(event_label(&fallback), "dotfiles | main");
-    assert_eq!(
-        event_label(&AgentEvent {
-            workspace: None,
-            ..base_event()
-        }),
-        "dotfiles | main"
-    );
-    assert_eq!(
-        event_label(&AgentEvent {
-            branch_name: None,
-            workspace: None,
-            ..base_event()
-        }),
-        "dotfiles"
-    );
+
+    assert_eq!(event_label(&untitled), "dotfiles | main");
     Ok(())
+}
+
+#[test]
+fn an_event_without_a_source_window_falls_back_to_the_project_and_its_branch() {
+    let windowless = AgentEvent {
+        workspace: None,
+        ..base_event()
+    };
+
+    assert_eq!(event_label(&windowless), "dotfiles | main");
+}
+
+#[test]
+fn an_event_without_a_branch_falls_back_to_the_project_name() {
+    let branchless = AgentEvent {
+        branch_name: None,
+        workspace: None,
+        ..base_event()
+    };
+
+    assert_eq!(event_label(&branchless), "dotfiles");
 }
 
 #[test]
