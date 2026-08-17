@@ -66,7 +66,8 @@ and `/usr/local/share/agent-notifier` after `install.sh`), the state directory
 - `manifest.json` — plugin manifest (`kinds: ["bar-widget"]`, id `io.github.bengous.agent-notifier`).
 - `BarWidget.qml` — the whole widget: bar icon with an unread badge, and a popup
   listing completions. It watches the state file and reads through
-  `agent-notifier list-display-json`; clicking a row runs `focus-id` then `mark-read`.
+  `agent-notifier list-display-json` and `agent-notifier version-json`; clicking
+  a row runs `focus-id`, and the popup buttons run `clear-read` and `clear-all`.
 
 Prefer a plain bar module over the plugin? `agent-notifier status-json` emits
 `{"text","tooltip","class"}` for a `"type": "command"` entry in your
@@ -150,18 +151,16 @@ your shell `PATH`.
 | `hook`, `claude-hook`, `pi-hook` | Capture a completion from stdin |
 | `status-json` | Print `{"text","tooltip","class"}` for the bar widget; `class` is `empty` or `unread` |
 | `list-display-json` | Print the focusable events the widget renders |
-| `list-json` | Print raw state |
 | `version-json` | Print build metadata: `{"name","version","commit","dirty","commitDate"}` |
-| `focus-latest` | Focus the latest unread event |
 | `focus-id <event-id>` | Focus one event and mark it read |
 | `mark-read <event-id>` | Mark one event read |
-| `focused-window-read` | Mark the focused window's events read, once |
-| `watch-focused-window` | Same, as a long-running listener |
+| `watch-focused-window` | Mark the focused window's events read, as a long-running listener |
 | `clear-read`, `clear-all` | Remove read events, or all of them |
 | `prune-stale` | Remove events whose source window is gone |
 
 `--help` prints this list. `--version` prints the package version. Unknown
-commands and extra arguments exit 2.
+commands, extra arguments, and a missing event id exit 2. `focus-id` exits 1
+when it reaches no window.
 
 An event is visible only while its source window still exists. Completions from
 the already-focused window are dropped: you are looking at them.
@@ -192,11 +191,25 @@ kept.
 `events.json` is an internal format. Read the state through `status-json` and
 `list-display-json` instead.
 
-Since v0.3.0 a rewrite keeps JSON keys the binary does not know, so a newer
-binary's fields survive rewrites by this one. Binaries up to v0.2.0 still drop
-those keys on every rewrite. After an upgrade, restart every old process —
-above all the `watch-focused-window` daemon — or recent fields are lost again
-until the restart.
+A rewrite keeps the JSON keys this binary does not know, so fields written by a
+newer binary survive it. That covers added keys only: a state file with another
+`version` is quarantined as invalid. After an upgrade, restart every long-lived
+process — above all the `watch-focused-window` listener — or its rewrites drop
+the newer fields until you do.
+
+## Environment
+
+| Variable | Effect |
+|---|---|
+| `XDG_STATE_HOME`, `HOME` | Where `events.json` lives; see [State](#state) |
+| `AGENT_NOTIFIER_SHARE_DIR` | Runtime data directory, instead of the one derived from the binary path |
+| `AGENT_NOTIFIER_SOUND_DIR` | Directory holding `agent-complete.mp3`, instead of the runtime data directory |
+| `AGENT_NOTIFIER_SOUND_FILE` | Full path of the completion sound; wins over both directories |
+| `AGENT_NOTIFIER_SOUND` | `0` plays no sound |
+| `PWD` | Working directory of a hook payload that carries none |
+| `XDG_RUNTIME_DIR`, `HYPRLAND_INSTANCE_SIGNATURE` | Hyprland event socket of `watch-focused-window`; both come from the compositor |
+| `CODEX_HOME` | Codex directory holding the sessions read for a session title |
+| `CODEX_SESSION_ID`, `PI_SESSION_ID` | Session id of a hook payload that carries none |
 
 ## Dependencies
 

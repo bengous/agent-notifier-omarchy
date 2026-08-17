@@ -366,6 +366,24 @@ fn handle_watch_focused_window() -> io::Result<()> {
     }
 }
 
+fn focus_event(event: Option<&AgentEvent>, target: &str) -> io::Result<i32> {
+    match hyprland::focus_event_source(event) {
+        FocusOutcome::NotFocused => {
+            eprintln!("agent-notifier: could not focus the source window for {target}");
+            Ok(1)
+        }
+        FocusOutcome::Primary => {
+            if let Some(id) = event.map(|event| event.id.clone()) {
+                let _ = with_state_update(&state_path()?, Utc::now(), |state| {
+                    set_event_status(state, &id, EventStatus::Read)
+                })?;
+            }
+            Ok(0)
+        }
+        FocusOutcome::Fallback => Ok(0),
+    }
+}
+
 fn print_json<T: Serialize>(value: &T) {
     match serde_json::to_string(value) {
         Ok(json) => println!("{json}"),
@@ -401,13 +419,10 @@ Commands:
   pi-hook                  Capture a Pi completion from stdin
   claude-hook              Capture a Claude Code completion from stdin
   status-json              Print bar-widget status JSON
-  list-json                Print raw state as JSON
   list-display-json        Print focusable events as display JSON
   version-json             Print build metadata as JSON
-  focus-latest             Focus the latest unread event
   focus-id <event-id>      Focus an event by id
   mark-read <event-id>     Mark an event as read
-  focused-window-read      Mark events for the focused window as read
   watch-focused-window     Watch focused-window changes
   clear-read               Remove read events
   clear-all                Remove all events
@@ -432,6 +447,7 @@ pub(crate) fn run() -> io::Result<i32> {
         CliCommand::PiHook => handle_pi_hook().map(|()| 0),
         CliCommand::ClaudeHook => handle_hook("claude").map(|()| 0),
         CliCommand::StatusJson => handle_status_json().map(|()| 0),
+        // TODO(contract): no known consumer — retire or test before v1.
         CliCommand::ListJson => {
             print_json(&read_state_or_recover(&state_path()?, Utc::now())?);
             Ok(0)
@@ -448,37 +464,19 @@ pub(crate) fn run() -> io::Result<i32> {
             print_json(&crate_build_info());
             Ok(0)
         }
+        // TODO(contract): no known consumer — retire or test before v1.
         CliCommand::FocusLatest => {
             let state = read_state_or_recover(&state_path()?, Utc::now())?;
             let focusable = focusable_events(&state.events);
             let event = focusable
                 .iter()
                 .find(|event| event.status == EventStatus::Unread);
-            if hyprland::focus_event_source(event) == FocusOutcome::Primary {
-                if let Some(id) = event.map(|event| event.id.clone()) {
-                    let _ = with_state_update(&state_path()?, Utc::now(), |state| {
-                        set_event_status(state, &id, EventStatus::Read)
-                    })?;
-                }
-            }
-            Ok(0)
+            focus_event(event, "the latest unread event")
         }
         CliCommand::FocusId(id) => {
             let state = read_state_or_recover(&state_path()?, Utc::now())?;
             let event = state.events.iter().find(|event| event.id == id);
-            match hyprland::focus_event_source(event) {
-                FocusOutcome::NotFocused => {
-                    eprintln!("agent-notifier: could not focus the source window for {id}");
-                    Ok(1)
-                }
-                FocusOutcome::Primary => {
-                    let _ = with_state_update(&state_path()?, Utc::now(), |state| {
-                        set_event_status(state, &id, EventStatus::Read)
-                    })?;
-                    Ok(0)
-                }
-                FocusOutcome::Fallback => Ok(0),
-            }
+            focus_event(event, &id)
         }
         CliCommand::MarkRead(id) => {
             let _ = with_state_update(&state_path()?, Utc::now(), |state| {
@@ -494,6 +492,7 @@ pub(crate) fn run() -> io::Result<i32> {
             eprintln!("agent-notifier: mark-read requires an event id");
             Ok(2)
         }
+        // TODO(contract): no known consumer — retire or test before v1.
         CliCommand::FocusedWindowRead => handle_focused_window_read().map(|()| 0),
         CliCommand::WatchFocusedWindow => handle_watch_focused_window().map(|()| 0),
         CliCommand::ClearRead => {

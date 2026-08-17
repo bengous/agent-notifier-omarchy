@@ -541,6 +541,59 @@ fn backs_up_corrupted_state() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn fixture_clock() -> Result<DateTime<Utc>, Box<dyn std::error::Error>> {
+    DateTime::from_timestamp_millis(1_778_061_600_000).ok_or_else(|| "invalid fixture clock".into())
+}
+
+fn stored_event_ids(path: &Path) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    Ok(parse_state(&fs::read_to_string(path)?)?
+        .events
+        .into_iter()
+        .map(|event| event.id)
+        .collect())
+}
+
+#[test]
+fn mark_read_persists_the_read_status() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempdir()?;
+    let path = dir.path().join("events.json");
+    let now = fixture_clock()?;
+    with_state_update(&path, now, |state| {
+        append_and_trim(state, event_with_address("read-me", 300, "0xbeef"))
+    })?;
+
+    with_state_update(&path, now, |state| {
+        set_event_status(state, "read-me", EventStatus::Read)
+    })?;
+
+    let stored = parse_state(&fs::read_to_string(&path)?)?;
+    assert_eq!(
+        stored.events.first().map(|event| event.status),
+        Some(EventStatus::Read)
+    );
+    Ok(())
+}
+
+#[test]
+fn prune_stale_keeps_only_events_with_an_existing_source_window(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempdir()?;
+    let path = dir.path().join("events.json");
+    let now = fixture_clock()?;
+    with_state_update(&path, now, |state| {
+        let state = append_and_trim(state, event_with_address("gone", 7, "0xstale"));
+        append_and_trim(state, event_with_address("here", 42, "0xlive"))
+    })?;
+    let existing_addresses = HashSet::from(["0xlive".to_owned()]);
+
+    with_state_update(&path, now, |state| {
+        prune_stale_events(state, &existing_addresses)
+    })?;
+
+    assert_eq!(stored_event_ids(&path)?, ["here"]);
+    Ok(())
+}
+
 #[test]
 fn uses_cleaned_hyprland_title_with_branch_fallback() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(
