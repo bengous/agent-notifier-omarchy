@@ -16,6 +16,9 @@ SOUND_FILE="agent-complete.mp3"
 
 assume_yes=0
 work_dir=""
+# Named by whichever resolver ran, never captured from stdout: that stream
+# belongs to the progress the operator reads.
+archive_name=""
 failed_harnesses=()
 
 usage() {
@@ -105,35 +108,36 @@ latest_tag() {
 # Both files land in the work directory under their release names: the checksum
 # file names the archive relative to itself.
 fetch_release() {
-  local target tag name
+  local target tag checksum
   target="$(release_target)"
   tag="$(latest_tag)"
-  name="${BIN_NAME}-${tag}-${target}.tar.gz"
-  note "downloading ${name}"
-  curl -fsSL -o "${work_dir}/${name}" "${DOWNLOAD_URL}/${tag}/${name}" ||
-    fail "cannot download ${name}"
-  curl -fsSL -o "${work_dir}/${name}.sha256" "${DOWNLOAD_URL}/${tag}/${name}.sha256" ||
-    fail "cannot download ${name}.sha256"
-  echo "${name}"
+  archive_name="${BIN_NAME}-${tag}-${target}.tar.gz"
+  # The checksum asset drops the .tar.gz rather than appending to it; it lands
+  # here beside the archive it names, which is what sha256sum -c reads.
+  checksum="${BIN_NAME}-${tag}-${target}.sha256"
+  note "downloading ${archive_name}"
+  curl -fsSL -o "${work_dir}/${archive_name}" "${DOWNLOAD_URL}/${tag}/${archive_name}" ||
+    fail "cannot download ${archive_name}"
+  curl -fsSL -o "${work_dir}/${archive_name}.sha256" "${DOWNLOAD_URL}/${tag}/${checksum}" ||
+    fail "cannot download ${checksum}"
 }
 
 copy_local_archive() {
-  local name
   [[ -f "${ARCHIVE}" ]] || fail "${ARCHIVE} is not a file"
   [[ -f "${ARCHIVE}.sha256" ]] || fail "${ARCHIVE}.sha256 is missing"
-  name="$(basename -- "${ARCHIVE}")"
-  cp -- "${ARCHIVE}" "${work_dir}/${name}"
-  cp -- "${ARCHIVE}.sha256" "${work_dir}/${name}.sha256"
-  echo "${name}"
+  archive_name="$(basename -- "${ARCHIVE}")"
+  cp -- "${ARCHIVE}" "${work_dir}/${archive_name}"
+  cp -- "${ARCHIVE}.sha256" "${work_dir}/${archive_name}.sha256"
 }
 
 install_binary() {
   local name binary_tmp
   if [[ -n "${ARCHIVE}" ]]; then
-    name="$(copy_local_archive)"
+    copy_local_archive
   else
-    name="$(fetch_release)"
+    fetch_release
   fi
+  name="${archive_name}"
 
   (cd -- "${work_dir}" && sha256sum -c "${name}.sha256" >/dev/null) ||
     fail "the checksum of ${name} does not match"
@@ -214,6 +218,10 @@ step_hooks() {
   local harness raw
   local -a chosen=()
   step "2/3  the harness hooks"
+  # A binary already on PATH can be older than this clone, and its usage dump
+  # would be the only thing the operator sees.
+  "${BIN_NAME}" doctor --json >/dev/null 2>&1 ||
+    fail "the ${BIN_NAME} on PATH does not understand 'doctor --json'; it is older than this clone — update it (README, section Install)"
   "${BIN_NAME}" doctor
   echo
   raw="$(chosen_harnesses)"
