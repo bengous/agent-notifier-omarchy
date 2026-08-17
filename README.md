@@ -230,7 +230,13 @@ the newer fields until you do.
 | Layer | Command | Runs |
 |---|---|---|
 | Binary | `cargo test` | CI |
+| Widget contract | `tests/qml/run.sh` | CI |
 | Widget visual | `tests/widget-harness/run.sh` | Locally only |
+
+`tests/qml/run.sh` projects an `events.json` v1 fixture through the real
+`list-display-json` and runs the QML tests of `tests/qml/` against that output.
+It needs the Qt 6 `qmltestrunner` — `qt6-declarative-dev-tools` on Debian and
+Ubuntu, `qt6-declarative` on Arch — and takes a `QMLTESTRUNNER` override.
 
 `tests/widget-harness/run.sh` runs the real `BarWidget.qml` under a nested
 Hyprland alongside omarchy's own `Ui` and `Commons`, injects completions through

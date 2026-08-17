@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "id": "1786953600000-a1b2c3d4",
+      "agent": "claude",
+      "kind": "main",
+      "projectName": "alpha",
+      "projectPath": "/home/agent/projects/alpha",
+      "projectKey": "/home/agent/projects/alpha",
+      "branchName": "main",
+      "cwd": "/home/agent/projects/alpha",
+      "sessionId": "session-alpha-1",
+      "sessionTitle": "Rework the event store lock",
+      "createdAt": "2026-08-17T13:20:00.000Z",
+      "workspace": {
+        "id": 1,
+        "name": "1",
+        "monitor": "DP-1",
+        "clientPid": 4242,
+        "clientAddress": "0xaaaa",
+        "clientAddresses": ["0xaaaa"],
+        "sourceProcess": { "pid": 0, "startTime": 0 },
+        "title": "alpha — main"
+      },
+      "status": "unread"
+    },
+    {
+      "id": "1786950000000-b2c3d4e5",
+      "agent": "codex",
+      "kind": "main",
+      "projectName": "beta",
+      "projectPath": "/home/agent/projects/beta",
+      "projectKey": "/home/agent/projects/beta",
+      "branchName": "feature/popup",
+      "cwd": "/home/agent/projects/beta",
+      "sessionId": "session-beta-1",
+      "sessionTitle": "Wire the popup to list-display-json",
+      "createdAt": "2026-08-17T12:20:00.000Z",
+      "workspace": {
+        "id": 2,
+        "name": "2",
+        "monitor": "DP-1",
+        "clientPid": 4243,
+        "clientAddress": "0xbbbb",
+        "clientAddresses": ["0xbbbb"],
+        "sourceProcess": { "pid": 0, "startTime": 0 },
+        "title": "beta — feature/popup"
+      },
+      "status": "unread"
+    },
+    {
+      "id": "1786946400000-c3d4e5f6",
+      "agent": "pi",
+      "kind": "main",
+      "projectName": "alpha",
+      "projectPath": "/home/agent/projects/alpha",
+      "projectKey": "/home/agent/projects/alpha",
+      "branchName": "main",
+      "cwd": "/home/agent/projects/alpha",
+      "sessionId": "session-alpha-2",
+      "createdAt": "2026-08-17T11:20:00.000Z",
+      "workspace": {
+        "id": 1,
+        "name": "1",
+        "monitor": "DP-1",
+        "clientPid": 4244,
+        "clientAddress": "0xcccc",
+        "clientAddresses": ["0xcccc"],
+        "sourceProcess": { "pid": 0, "startTime": 0 },
+        "title": "alpha — main"
+      },
+      "status": "read"
+    }
+  ]
+}
