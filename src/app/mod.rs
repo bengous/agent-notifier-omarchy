@@ -1,58 +1,46 @@
 pub(crate) mod cli;
+mod deps;
 
-use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::env;
-use std::io::{self, Read};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::Duration;
 
 use crate::app::cli::CliCommand;
 use crate::display::{
     build_info, display_state_from_events, event_label, status_output, BuildInfo, StatusOutput,
 };
-use crate::event::store::{read_state, state_path, with_state_update};
+use crate::event::store::{read_state, with_state_update};
 use crate::event::{
     append_and_trim, capture_decision, clear_read_events, empty_state,
     mark_focused_window_events_read, prune_stale_events, set_event_status, Agent, AgentEvent,
-    AgentNotifierState, CaptureDecision, EventStatus, FocusOutcome, SourceLiveness, SourceWindow,
+    AgentNotifierState, CaptureDecision, EventStatus, FocusOutcome,
 };
 use crate::exec::{run_command, run_command_owned, DEFAULT_TIMEOUT};
 use crate::intake;
-use crate::window::{hyprland, proc};
 use crate::{STATUS_ERROR_CLASS, UNAVAILABLE_STATUS_TOOLTIP};
 
-fn mark_address_read(address: &str, now: DateTime<Utc>) -> io::Result<()> {
-    let _ = with_state_update(&state_path()?, now, |state| {
+pub(crate) use deps::{Deps, SystemDeps};
+
+fn mark_address_read(address: &str, deps: &dyn Deps) -> io::Result<()> {
+    let _ = with_state_update(&deps.state_path()?, deps.now(), |state| {
         mark_focused_window_events_read(state, Some(address))
     })?;
     Ok(())
 }
 
-fn compositor_liveness() -> SourceLiveness {
-    SourceLiveness {
-        existing_addresses: hyprland::existing_window_addresses(),
-        process_is_alive: proc::process_is_alive,
-    }
-}
-
-fn focusable_events(events: &[AgentEvent]) -> Vec<AgentEvent> {
-    crate::event::focusable_events(events, &compositor_liveness())
+fn focusable_events(events: &[AgentEvent], deps: &dyn Deps) -> Vec<AgentEvent> {
+    crate::event::focusable_events(events, &deps.liveness())
 }
 
 fn read_state_with_focused_window_read(
-    path: &Path,
+    deps: &dyn Deps,
     focused: Option<&str>,
-    now: DateTime<Utc>,
 ) -> io::Result<AgentNotifierState> {
-    with_state_update(path, now, |state| {
+    with_state_update(&deps.state_path()?, deps.now(), |state| {
         mark_focused_window_events_read(state, focused)
     })
-}
-
-fn format_status(state: &AgentNotifierState) -> StatusOutput {
-    status_output(&focusable_events(&state.events))
 }
 
 fn prefix_share_dir() -> PathBuf {
@@ -94,19 +82,6 @@ fn sound_file() -> PathBuf {
         .join("agent-complete.mp3")
 }
 
-fn notify(agent: Agent, event: &AgentEvent) {
-    let agent_name = agent.display_name();
-    let _ = run_command_owned(
-        &[
-            "notify-send".to_owned(),
-            format!("--app-name={agent_name}"),
-            format!("{agent_name} completed"),
-            event_label(event),
-        ],
-        DEFAULT_TIMEOUT,
-    );
-}
-
 fn play_sound() {
     if env::var("AGENT_NOTIFIER_SOUND").as_deref() == Ok("0") {
         return;
@@ -124,15 +99,26 @@ fn play_sound() {
     let _ = run_command(&["canberra-gtk-play", "-f", &file], DEFAULT_TIMEOUT);
 }
 
-fn capture_completion_event(
-    agent: Agent,
-    event: &AgentEvent,
-    now: DateTime<Utc>,
-) -> io::Result<()> {
-    match capture_decision(event, hyprland::focused_window_address().as_deref()) {
+fn alert(app_name: &str, title: &str, body: &str) {
+    let notification = [
+        "notify-send".to_owned(),
+        format!("--app-name={app_name}"),
+        title.to_owned(),
+        body.to_owned(),
+    ];
+    let sound = thread::spawn(play_sound);
+    let notify = thread::spawn(move || {
+        let _ = run_command_owned(&notification, DEFAULT_TIMEOUT);
+    });
+    let _ = sound.join();
+    let _ = notify.join();
+}
+
+fn capture_completion_event(agent: Agent, event: &AgentEvent, deps: &dyn Deps) -> io::Result<()> {
+    match capture_decision(event, deps.focused_window_address().as_deref()) {
         CaptureDecision::Discard => return Ok(()),
         CaptureDecision::PersistAndAlert => {
-            with_state_update(&state_path()?, now, |state| {
+            with_state_update(&deps.state_path()?, deps.now(), |state| {
                 append_and_trim(state, event.clone())
             })?;
         }
@@ -142,69 +128,56 @@ fn capture_completion_event(
             );
         }
     }
-    let notify_event = event.clone();
-    let sound = thread::spawn(play_sound);
-    let notification = thread::spawn(move || notify(agent, &notify_event));
-    let _ = sound.join();
-    let _ = notification.join();
+    let agent_name = agent.display_name();
+    deps.alert(
+        agent_name,
+        &format!("{agent_name} completed"),
+        &event_label(event),
+    );
     Ok(())
 }
 
-/// Resolve the source window, retrying once when the address is missing —
-/// `hyprctl clients` can race a window that has just been mapped.
-fn resolve_source_window() -> Option<SourceWindow> {
-    let first = hyprland::current_source_window();
-    if first
-        .as_ref()
-        .is_some_and(|source_window| source_window.client_address.is_some())
-    {
-        return first;
-    }
-    thread::sleep(Duration::from_millis(100));
-    hyprland::current_source_window().or(first)
+fn handle_agent_hook(agent: Agent, deps: &dyn Deps) -> io::Result<()> {
+    let raw = deps.read_stdin()?;
+    let event = intake::capture(agent, &raw, deps.current_source_window(), deps.now());
+    capture_completion_event(agent, &event, deps)
 }
 
-fn handle_agent_hook(agent: Agent) -> io::Result<()> {
-    let mut raw = String::new();
-    io::stdin().read_to_string(&mut raw)?;
-    let now = Utc::now();
-    let event = intake::capture(agent, &raw, resolve_source_window(), now);
-    capture_completion_event(agent, &event, now)
+fn handle_status_json(deps: &dyn Deps) -> io::Result<()> {
+    let focused = deps.focused_window_address();
+    let state = read_state_with_focused_window_read(deps, focused.as_deref())?;
+    let liveness = deps.liveness();
+    let output = std::panic::catch_unwind(|| {
+        status_output(&crate::event::focusable_events(&state.events, &liveness))
+    })
+    .unwrap_or_else(|_| unavailable_status_output());
+    print_json(&output, deps)
 }
 
-fn handle_status_json() -> io::Result<()> {
-    let focused = hyprland::focused_window_address();
-    let state =
-        read_state_with_focused_window_read(&state_path()?, focused.as_deref(), Utc::now())?;
-    let output = std::panic::catch_unwind(|| format_status(&state))
-        .unwrap_or_else(|_| unavailable_status_output());
-    print_json(&output)
-}
-
-fn handle_focused_window_read() -> io::Result<()> {
-    let Some(address) = hyprland::focused_window_address() else {
+fn handle_focused_window_read(deps: &dyn Deps) -> io::Result<()> {
+    let Some(address) = deps.focused_window_address() else {
         return Ok(());
     };
-    mark_address_read(&address, Utc::now())
+    mark_address_read(&address, deps)
 }
 
-fn handle_watch_focused_window() -> io::Result<()> {
-    hyprland::watch_focused_window(|address| {
-        if let Err(error) = mark_address_read(address, Utc::now()) {
+fn handle_watch_focused_window(deps: &dyn Deps) -> io::Result<()> {
+    deps.watch_focused_window(&mut |address| {
+        if let Err(error) = mark_address_read(address, deps) {
             eprintln!("agent-notifier: state update failed: {error}");
         }
     })
 }
 
-fn focus_event(event: Option<&AgentEvent>, target: &str) -> io::Result<i32> {
-    match hyprland::focus_event_source(event) {
+fn focus_event(event: Option<&AgentEvent>, target: &str, deps: &dyn Deps) -> io::Result<i32> {
+    match deps.focus_event_source(event) {
         FocusOutcome::NotFocused => {
             eprintln!("agent-notifier: could not focus the source window for {target}");
             Ok(1)
         }
         FocusOutcome::Primary => {
             if let Some(id) = event.map(|event| event.id.clone()) {
-                let _ = with_state_update(&state_path()?, Utc::now(), |state| {
+                let _ = with_state_update(&deps.state_path()?, deps.now(), |state| {
                     set_event_status(state, &id, EventStatus::Read)
                 })?;
             }
@@ -216,14 +189,14 @@ fn focus_event(event: Option<&AgentEvent>, target: &str) -> io::Result<i32> {
 
 /// A serialization failure propagates: a shaped fallback here would lie to
 /// every consumer except status-json, whose degradation lives in main.
-fn print_json<T: Serialize>(value: &T) -> io::Result<()> {
+fn print_json<T: Serialize>(value: &T, deps: &dyn Deps) -> io::Result<()> {
     let json = serde_json::to_string(value).map_err(io::Error::other)?;
-    println!("{json}");
+    deps.print_line(&json);
     Ok(())
 }
 
-fn crate_build_info() -> BuildInfo {
-    let state_path = state_path().ok();
+fn crate_build_info(deps: &dyn Deps) -> BuildInfo {
+    let state_path = deps.state_path().ok();
     build_info(
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION"),
@@ -264,59 +237,55 @@ Options:
   -V, --version            Print version"
 }
 
-pub(crate) fn run() -> io::Result<i32> {
-    match CliCommand::from_env() {
+pub(crate) fn run(command: &CliCommand, deps: &dyn Deps) -> io::Result<i32> {
+    match command {
         CliCommand::Help => {
-            println!("{}", usage());
+            deps.print_line(usage());
             Ok(0)
         }
         CliCommand::Version => {
-            println!("agent-notifier {}", env!("CARGO_PKG_VERSION"));
+            deps.print_line(&format!("agent-notifier {}", env!("CARGO_PKG_VERSION")));
             Ok(0)
         }
-        CliCommand::Hook => handle_agent_hook(Agent::Codex).map(|()| 0),
-        CliCommand::PiHook => handle_agent_hook(Agent::Pi).map(|()| 0),
-        CliCommand::ClaudeHook => handle_agent_hook(Agent::Claude).map(|()| 0),
-        CliCommand::StatusJson => handle_status_json().map(|()| 0),
+        CliCommand::Hook => handle_agent_hook(Agent::Codex, deps).map(|()| 0),
+        CliCommand::PiHook => handle_agent_hook(Agent::Pi, deps).map(|()| 0),
+        CliCommand::ClaudeHook => handle_agent_hook(Agent::Claude, deps).map(|()| 0),
+        CliCommand::StatusJson => handle_status_json(deps).map(|()| 0),
         // TODO(contract): no known consumer — retire or test before v1.
         CliCommand::ListJson => {
-            print_json(&read_state(&state_path()?, Utc::now())?)?;
+            print_json(&read_state(&deps.state_path()?, deps.now())?, deps)?;
             Ok(0)
         }
         CliCommand::ListDisplayJson => {
-            let focused = hyprland::focused_window_address();
-            let state = read_state_with_focused_window_read(
-                &state_path()?,
-                focused.as_deref(),
-                Utc::now(),
+            let focused = deps.focused_window_address();
+            let state = read_state_with_focused_window_read(deps, focused.as_deref())?;
+            print_json(
+                &display_state_from_events(state.version, focusable_events(&state.events, deps)),
+                deps,
             )?;
-            print_json(&display_state_from_events(
-                state.version,
-                focusable_events(&state.events),
-            ))?;
             Ok(0)
         }
         CliCommand::VersionJson => {
-            print_json(&crate_build_info())?;
+            print_json(&crate_build_info(deps), deps)?;
             Ok(0)
         }
         // TODO(contract): no known consumer — retire or test before v1.
         CliCommand::FocusLatest => {
-            let state = read_state(&state_path()?, Utc::now())?;
-            let focusable = focusable_events(&state.events);
+            let state = read_state(&deps.state_path()?, deps.now())?;
+            let focusable = focusable_events(&state.events, deps);
             let event = focusable
                 .iter()
                 .find(|event| event.status == EventStatus::Unread);
-            focus_event(event, "the latest unread event")
+            focus_event(event, "the latest unread event", deps)
         }
         CliCommand::FocusId(id) => {
-            let state = read_state(&state_path()?, Utc::now())?;
-            let event = state.events.iter().find(|event| event.id == id);
-            focus_event(event, &id)
+            let state = read_state(&deps.state_path()?, deps.now())?;
+            let event = state.events.iter().find(|event| event.id == *id);
+            focus_event(event, id, deps)
         }
         CliCommand::MarkRead(id) => {
-            let _ = with_state_update(&state_path()?, Utc::now(), |state| {
-                set_event_status(state, &id, EventStatus::Read)
+            let _ = with_state_update(&deps.state_path()?, deps.now(), |state| {
+                set_event_status(state, id, EventStatus::Read)
             })?;
             Ok(0)
         }
@@ -329,22 +298,19 @@ pub(crate) fn run() -> io::Result<i32> {
             Ok(2)
         }
         // TODO(contract): no known consumer — retire or test before v1.
-        CliCommand::FocusedWindowRead => handle_focused_window_read().map(|()| 0),
-        CliCommand::WatchFocusedWindow => handle_watch_focused_window().map(|()| 0),
+        CliCommand::FocusedWindowRead => handle_focused_window_read(deps).map(|()| 0),
+        CliCommand::WatchFocusedWindow => handle_watch_focused_window(deps).map(|()| 0),
         CliCommand::ClearRead => {
-            let _ = with_state_update(&state_path()?, Utc::now(), clear_read_events)?;
+            let _ = with_state_update(&deps.state_path()?, deps.now(), clear_read_events)?;
             Ok(0)
         }
         CliCommand::ClearAll => {
-            let _ = with_state_update(&state_path()?, Utc::now(), |_| empty_state())?;
+            let _ = with_state_update(&deps.state_path()?, deps.now(), |_| empty_state())?;
             Ok(0)
         }
         CliCommand::PruneStale => {
-            let liveness = SourceLiveness {
-                existing_addresses: hyprland::try_existing_window_addresses()?,
-                process_is_alive: proc::process_is_alive,
-            };
-            let _ = with_state_update(&state_path()?, Utc::now(), |state| {
+            let liveness = deps.try_liveness()?;
+            let _ = with_state_update(&deps.state_path()?, deps.now(), |state| {
                 prune_stale_events(state, &liveness)
             })?;
             Ok(0)

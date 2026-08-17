@@ -1,13 +1,140 @@
 use chrono::{DateTime, Utc};
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::error::Error;
 use std::ffi::OsStr;
-use std::path::Path;
+use std::io;
+use std::path::{Path, PathBuf};
 
-use crate::event::{empty_state, Agent, AgentEvent, AgentNotifierState, ProcessRef, SourceWindow};
+use crate::app::Deps;
+use crate::event::{
+    empty_state, Agent, AgentEvent, AgentNotifierState, FocusOutcome, ProcessRef, SourceLiveness,
+    SourceWindow,
+};
 use crate::intake::agents::profile;
 use crate::intake::build::{build_event, CaptureContext, HookInput};
 
 pub(crate) fn fixture_clock() -> Result<DateTime<Utc>, Box<dyn std::error::Error>> {
     DateTime::from_timestamp_millis(1_778_061_600_000).ok_or_else(|| "invalid fixture clock".into())
+}
+
+fn no_process_is_alive(_process: &ProcessRef) -> bool {
+    false
+}
+
+/// The second adapter of the `Deps` seam: a world a test writes by hand, so
+/// `run` can be driven end to end without a compositor, a clock or a terminal.
+#[derive(Debug)]
+pub(crate) struct FakeDeps {
+    pub(crate) state_path: PathBuf,
+    pub(crate) now: DateTime<Utc>,
+    pub(crate) stdin: String,
+    pub(crate) focused_window_address: Option<String>,
+    pub(crate) existing_window_addresses: HashSet<String>,
+    pub(crate) process_is_alive: fn(&ProcessRef) -> bool,
+    pub(crate) source_window: Option<SourceWindow>,
+    pub(crate) focus_outcome: FocusOutcome,
+    pub(crate) focused_window_changes: Vec<String>,
+    pub(crate) printed_lines: RefCell<Vec<String>>,
+    pub(crate) alerts: RefCell<Vec<[String; 3]>>,
+}
+
+impl FakeDeps {
+    pub(crate) fn new(state_path: PathBuf) -> Result<Self, Box<dyn Error>> {
+        Ok(Self {
+            state_path,
+            now: fixture_clock()?,
+            stdin: String::new(),
+            focused_window_address: None,
+            existing_window_addresses: HashSet::new(),
+            process_is_alive: no_process_is_alive,
+            source_window: None,
+            focus_outcome: FocusOutcome::NotFocused,
+            focused_window_changes: Vec::new(),
+            printed_lines: RefCell::new(Vec::new()),
+            alerts: RefCell::new(Vec::new()),
+        })
+    }
+
+    pub(crate) fn printed(&self) -> String {
+        self.printed_lines.borrow().join("\n")
+    }
+
+    pub(crate) fn printed_json(&self) -> Result<serde_json::Value, Box<dyn Error>> {
+        let lines = self.printed_lines.borrow();
+        let [line] = lines.as_slice() else {
+            return Err(format!("expected exactly one printed line, got {}", lines.len()).into());
+        };
+        Ok(serde_json::from_str(line)?)
+    }
+
+    pub(crate) fn stored_state(&self) -> Result<AgentNotifierState, Box<dyn Error>> {
+        Ok(crate::event::parse_state(&std::fs::read_to_string(
+            &self.state_path,
+        )?)?)
+    }
+
+    pub(crate) fn stored_event(&self, id: &str) -> Result<AgentEvent, Box<dyn Error>> {
+        self.stored_state()?
+            .events
+            .into_iter()
+            .find(|event| event.id == id)
+            .ok_or_else(|| format!("no stored event {id}").into())
+    }
+}
+
+impl Deps for FakeDeps {
+    fn state_path(&self) -> io::Result<PathBuf> {
+        Ok(self.state_path.clone())
+    }
+
+    fn now(&self) -> DateTime<Utc> {
+        self.now
+    }
+
+    fn read_stdin(&self) -> io::Result<String> {
+        Ok(self.stdin.clone())
+    }
+
+    fn print_line(&self, line: &str) {
+        self.printed_lines.borrow_mut().push(line.to_owned());
+    }
+
+    fn focused_window_address(&self) -> Option<String> {
+        self.focused_window_address.clone()
+    }
+
+    fn current_source_window(&self) -> Option<SourceWindow> {
+        self.source_window.clone()
+    }
+
+    fn liveness(&self) -> SourceLiveness {
+        SourceLiveness {
+            existing_addresses: self.existing_window_addresses.clone(),
+            process_is_alive: self.process_is_alive,
+        }
+    }
+
+    fn try_liveness(&self) -> io::Result<SourceLiveness> {
+        Ok(self.liveness())
+    }
+
+    fn focus_event_source(&self, event: Option<&AgentEvent>) -> FocusOutcome {
+        event.map_or(FocusOutcome::NotFocused, |_| self.focus_outcome)
+    }
+
+    fn watch_focused_window(&self, on_change: &mut dyn FnMut(&str)) -> io::Result<()> {
+        for address in &self.focused_window_changes {
+            on_change(address);
+        }
+        Ok(())
+    }
+
+    fn alert(&self, app_name: &str, title: &str, body: &str) {
+        self.alerts
+            .borrow_mut()
+            .push([app_name.to_owned(), title.to_owned(), body.to_owned()]);
+    }
 }
 
 fn fixture_context(workspace: Option<SourceWindow>, random_id: &str) -> CaptureContext {

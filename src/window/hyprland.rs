@@ -16,6 +16,7 @@ use crate::window::proc::{current_parent_pid, pid_chain, process_ref};
 
 const RECONNECT_DELAY: Duration = Duration::from_millis(250);
 const RECONNECT_DELAY_MAX: Duration = Duration::from_secs(5);
+const MAP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Deserialize)]
 struct HyprWorkspace {
@@ -142,7 +143,21 @@ fn event_socket_path() -> Option<PathBuf> {
     )
 }
 
+/// Resolve the source window, retrying once when the address is missing —
+/// `hyprctl clients` can race a window that has just been mapped.
 pub(crate) fn current_source_window() -> Option<SourceWindow> {
+    let first = read_source_window();
+    if first
+        .as_ref()
+        .is_some_and(|source_window| source_window.client_address.is_some())
+    {
+        return first;
+    }
+    thread::sleep(MAP_RETRY_DELAY);
+    read_source_window().or(first)
+}
+
+fn read_source_window() -> Option<SourceWindow> {
     let clients = attach_monitor_names(read_clients(), &read_monitors());
     resolve_source_window_from_pid_chain(current_parent_pid(), &clients)
 }

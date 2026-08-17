@@ -8,6 +8,7 @@ mod test_fixtures;
 mod window;
 
 use crate::app::cli::CliCommand;
+use crate::app::SystemDeps;
 
 const UNAVAILABLE_STATUS_JSON: &str =
     r#"{"text":"agents !","tooltip":"Agent notifier unavailable","class":"error"}"#;
@@ -32,7 +33,7 @@ fn hook_failure_exit_code(command: &CliCommand) -> i32 {
 
 fn main() {
     let command = CliCommand::from_env();
-    match app::run() {
+    match app::run(&command, &SystemDeps) {
         Ok(code) => std::process::exit(code),
         Err(error) => {
             eprintln!("agent-notifier: {error}");
