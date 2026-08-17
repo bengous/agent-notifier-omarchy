@@ -1,3 +1,4 @@
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -42,7 +43,7 @@ struct HyprMonitor {
 }
 
 pub(crate) fn existing_window_addresses() -> HashSet<String> {
-    try_existing_window_addresses().unwrap_or_default()
+    best_effort(try_existing_window_addresses())
 }
 
 pub(crate) fn try_existing_window_addresses() -> io::Result<HashSet<String>> {
@@ -53,7 +54,18 @@ pub(crate) fn try_existing_window_addresses() -> io::Result<HashSet<String>> {
 }
 
 pub(crate) fn focused_window_address() -> Option<String> {
-    read_focused_client().and_then(|client| client.address)
+    best_effort(try_read_focused_client().map(|client| client.address))
+}
+
+/// The reads that feed the widget degrade to an empty answer: a compositor
+/// hiccup must not blank the bar or fail a hook. Reporting the failure is what
+/// keeps the swallow honest; every caller that can act on the error takes the
+/// `try_` variant instead.
+fn best_effort<T: Default>(result: io::Result<T>) -> T {
+    result.unwrap_or_else(|error| {
+        eprintln!("agent-notifier: {error}");
+        T::default()
+    })
 }
 
 /// Report every focused-window change until the process ends.
@@ -72,8 +84,8 @@ pub(crate) fn watch_focused_window(on_change: impl FnMut(&str)) -> io::Result<()
     Ok(())
 }
 
-/// The compositor outlives no daemon: a Hyprland restart drops the socket, so
-/// the watch reconnects forever. `wait` is what ends it — only a test breaks.
+/// A Hyprland restart drops the socket, so the watch reconnects for as long as
+/// the daemon lives: `wait` is what ends it, and only a test ever breaks out.
 fn watch_event_stream<R: BufRead>(
     mut connect: impl FnMut() -> io::Result<R>,
     mut wait: impl FnMut(Duration) -> ControlFlow<()>,
@@ -169,34 +181,38 @@ fn dispatch_succeeded(response: Option<&str>) -> bool {
 }
 
 fn read_clients() -> Vec<HyprClient> {
-    try_read_clients().unwrap_or_default()
+    best_effort(try_read_clients())
 }
 
 fn try_read_clients() -> io::Result<Vec<HyprClient>> {
-    parse_clients_output(command_output(["hyprctl", "clients", "-j"]))
-}
-
-fn parse_clients_output(output: Option<String>) -> io::Result<Vec<HyprClient>> {
-    let output = output.ok_or_else(|| {
-        io::Error::other("failed to query Hyprland clients with `hyprctl clients -j`")
-    })?;
-    serde_json::from_str(&output).map_err(|error| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("invalid `hyprctl clients -j` JSON: {error}"),
-        )
-    })
+    hyprctl_json(["hyprctl", "clients", "-j"])
 }
 
 fn read_monitors() -> Vec<HyprMonitor> {
-    command_output(["hyprctl", "monitors", "-j"])
-        .and_then(|output| serde_json::from_str::<Vec<HyprMonitor>>(&output).ok())
-        .unwrap_or_default()
+    best_effort(try_read_monitors())
 }
 
-fn read_focused_client() -> Option<HyprClient> {
-    command_output(["hyprctl", "activewindow", "-j"])
-        .and_then(|output| serde_json::from_str::<HyprClient>(&output).ok())
+fn try_read_monitors() -> io::Result<Vec<HyprMonitor>> {
+    hyprctl_json(["hyprctl", "monitors", "-j"])
+}
+
+fn try_read_focused_client() -> io::Result<HyprClient> {
+    hyprctl_json(["hyprctl", "activewindow", "-j"])
+}
+
+fn hyprctl_json<T: DeserializeOwned>(argv: [&str; 3]) -> io::Result<T> {
+    parse_hyprctl_json(&argv.join(" "), command_output(argv))
+}
+
+fn parse_hyprctl_json<T: DeserializeOwned>(command: &str, output: Option<String>) -> io::Result<T> {
+    let output = output
+        .ok_or_else(|| io::Error::other(format!("failed to query Hyprland with `{command}`")))?;
+    serde_json::from_str(&output).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid `{command}` JSON: {error}"),
+        )
+    })
 }
 
 fn attach_monitor_names(mut clients: Vec<HyprClient>, monitors: &[HyprMonitor]) -> Vec<HyprClient> {

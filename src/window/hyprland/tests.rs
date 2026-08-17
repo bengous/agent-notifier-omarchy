@@ -241,6 +241,10 @@ fn a_client_without_focus_history_is_the_last_resort() {
     assert_eq!(picked_address(&clients).as_deref(), Some("0xknown"));
 }
 
+fn parse_clients_output(output: Option<String>) -> io::Result<Vec<HyprClient>> {
+    parse_hyprctl_json("hyprctl clients -j", output)
+}
+
 #[test]
 fn reads_the_hyprland_focus_history_field() -> Result<(), Box<dyn std::error::Error>> {
     let clients = parse_clients_output(Some(
@@ -268,7 +272,7 @@ fn client_query_rejects_command_failure() {
 
     assert_eq!(
         error.as_deref(),
-        Some("failed to query Hyprland clients with `hyprctl clients -j`")
+        Some("failed to query Hyprland with `hyprctl clients -j`")
     );
 }
 
@@ -281,4 +285,20 @@ fn client_query_rejects_invalid_json() {
     assert!(error
         .as_deref()
         .is_some_and(|error| error.starts_with("invalid `hyprctl clients -j` JSON:")));
+}
+
+/// Hyprland answers `{}` when no window holds the focus; that is an answer, not
+/// a failed query.
+#[test]
+fn an_unfocused_compositor_reads_as_a_client_without_an_address(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client: HyprClient = parse_hyprctl_json("hyprctl activewindow -j", Some("{}".to_owned()))?;
+
+    assert_eq!(client.address, None);
+    Ok(())
+}
+
+#[test]
+fn a_failed_query_degrades_to_the_empty_answer() {
+    assert!(best_effort(parse_clients_output(None)).is_empty());
 }
