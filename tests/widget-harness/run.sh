@@ -41,15 +41,18 @@ TITLES=(
 
 event_count=5
 keep=0
-screenshot="${REPO_DIR}/target/widget-harness/popup.png"
+scenario=default
+screenshot=""
 
 usage() {
   cat <<'EOF'
-Usage: tests/widget-harness/run.sh [--events N] [--out FILE] [--keep]
+Usage: tests/widget-harness/run.sh [--events N] [--out FILE] [--keep] [--scenario NAME]
 
-  --events N   completions to inject through the real binary (default 5)
-  --out FILE   screenshot path (default target/widget-harness/popup.png)
-  --keep       leave the harness running instead of stopping it
+  --events N        completions to inject through the real binary (default 5)
+  --out FILE        screenshot path (default target/widget-harness/<scenario>.png)
+  --keep            leave the harness running instead of stopping it
+  --scenario NAME   default, or binary-missing: no binary on PATH, setup card
+                    shown, doctor CTA logged, recovery after the binary returns
 EOF
 }
 
@@ -73,6 +76,11 @@ while (($#)); do
     --keep)
       keep=1
       shift
+      ;;
+    --scenario)
+      (($# >= 2)) || fail "$1 needs a value"
+      scenario=$2
+      shift 2
       ;;
     -h | --help)
       usage
@@ -98,6 +106,18 @@ on_exit() {
 }
 trap on_exit EXIT
 
+case ${scenario} in
+  default | binary-missing) ;;
+  *) fail "unknown scenario ${scenario}" ;;
+esac
+if [[ -z ${screenshot} ]]; then
+  if [[ ${scenario} == default ]]; then
+    screenshot="${REPO_DIR}/target/widget-harness/popup.png"
+  else
+    screenshot="${REPO_DIR}/target/widget-harness/${scenario}.png"
+  fi
+fi
+
 for tool in Hyprland qs grim jq foot cargo; do
   command -v "${tool}" >/dev/null || fail "the widget harness needs ${tool} on PATH"
 done
@@ -121,11 +141,22 @@ mkdir -p "${RUN_DIR}"/{bin,state,fixtures,projects,transcripts,codex/sessions,sh
 mkdir -p -- "$(dirname -- "${screenshot}")"
 
 cargo build --quiet --manifest-path "${REPO_DIR}/Cargo.toml"
-ln -s "${REPO_DIR}/target/debug/agent-notifier" "${RUN_DIR}/bin/agent-notifier"
+# The binary-missing scenario starts with no binary anywhere on the widget's
+# PATH; the run restores this symlink later to observe the recovery.
+if [[ ${scenario} != binary-missing ]]; then
+  ln -s "${REPO_DIR}/target/debug/agent-notifier" "${RUN_DIR}/bin/agent-notifier"
+fi
 # The hook always alerts. A harness run must not reach the user's notification
 # daemon, so its own notify-send shadows the real one.
 printf '#!/bin/sh\nexit 0\n' >"${RUN_DIR}/bin/notify-send"
 chmod +x "${RUN_DIR}/bin/notify-send"
+# The widget's CTA runs doctor through this helper; the harness shadows it
+# with a logger so a run never opens a terminal on the host session.
+cat >"${RUN_DIR}/bin/omarchy-launch-floating-terminal-with-presentation" <<EOF
+#!/bin/sh
+echo "\$*" >>"${RUN_DIR}/launch.log"
+EOF
+chmod +x "${RUN_DIR}/bin/omarchy-launch-floating-terminal-with-presentation"
 
 # quickshell resolves qs.<dir> against the config root, so omarchy's own Ui and
 # Commons are all the real widget needs to run outside omarchy-shell.
@@ -136,9 +167,11 @@ ln -s "${OMARCHY_SHELL_DIR}/Commons" "${RUN_DIR}/shell/Commons"
 ln -s "${REPO_DIR}" "${RUN_DIR}/shell/AgentNotifier"
 cp "${HARNESS_DIR}/shell.qml" "${RUN_DIR}/shell/shell.qml"
 
-for project in "${PROJECTS[@]}"; do
-  git init --quiet -b main "${RUN_DIR}/projects/${project}"
-done
+if [[ ${scenario} != binary-missing ]]; then
+  for project in "${PROJECTS[@]}"; do
+    git init --quiet -b main "${RUN_DIR}/projects/${project}"
+  done
+fi
 
 write_fixtures() {
   local index agent project session title payload
@@ -177,7 +210,9 @@ write_fixtures() {
     esac
   done
 }
-write_fixtures
+if [[ ${scenario} != binary-missing ]]; then
+  write_fixtures
+fi
 
 shopt -s nullglob
 
@@ -267,59 +302,75 @@ wait_for "the nested monitor mode" 30 monitor_has_mode
 monitor=$(hyprctl -j monitors | jq -r '.[0].name')
 monitor_size=$(hyprctl -j monitors | jq -r '"\(.[0].width)x\(.[0].height)"')
 
+# The dev machine usually carries agent-notifier on PATH. The binary-missing
+# scenario needs the widget's lookup to fail, so every directory holding the
+# binary is dropped from the PATH the harness hands to quickshell.
+harness_path="${RUN_DIR}/bin:${PATH}"
+if [[ ${scenario} == binary-missing ]]; then
+  harness_path="${RUN_DIR}/bin"
+  IFS=: read -ra path_dirs <<<"${PATH}"
+  for dir in "${path_dirs[@]}"; do
+    if [[ -n ${dir} && ! -x ${dir}/agent-notifier ]]; then
+      harness_path+=":${dir}"
+    fi
+  done
+fi
+
 harness_env=(
   WAYLAND_DISPLAY="${nested_display}"
   HYPRLAND_INSTANCE_SIGNATURE="${HYPRLAND_INSTANCE_SIGNATURE}"
-  PATH="${RUN_DIR}/bin:${PATH}"
+  PATH="${harness_path}"
   XDG_STATE_HOME="${RUN_DIR}/state"
   CODEX_HOME="${RUN_DIR}/codex"
   AGENT_NOTIFIER_SOUND=0
 )
 
-env "${harness_env[@]}" foot --app-id="${INJECTOR_CLASS}" --title="${INJECTOR_TITLE}" \
-  bash "${HARNESS_DIR}/inject.sh" "${RUN_DIR}" >"${RUN_DIR}/injector.log" 2>&1 &
-echo $! >"${RUN_DIR}/injector.pid"
+if [[ ${scenario} != binary-missing ]]; then
+  env "${harness_env[@]}" foot --app-id="${INJECTOR_CLASS}" --title="${INJECTOR_TITLE}" \
+    bash "${HARNESS_DIR}/inject.sh" "${RUN_DIR}" >"${RUN_DIR}/injector.log" 2>&1 &
+  echo $! >"${RUN_DIR}/injector.pid"
 
-injector_address() {
-  hyprctl -j clients |
-    jq -er --arg class "${INJECTOR_CLASS}" 'map(select(.class == $class)) | .[0].address'
-}
-injector_is_mapped() { injector_address >/dev/null; }
-wait_for "the injector window" 30 injector_is_mapped
+  injector_address() {
+    hyprctl -j clients |
+      jq -er --arg class "${INJECTOR_CLASS}" 'map(select(.class == $class)) | .[0].address'
+  }
+  injector_is_mapped() { injector_address >/dev/null; }
+  wait_for "the injector window" 30 injector_is_mapped
 
-# A hook whose source window holds the focus discards its own completion, and
-# list-display-json marks that window's events read. Parking the injector out of
-# focus is what lets the fixtures reach the popup — and keeps it out of frame.
-# The terminal can ask for activation again after it maps, so the move is
-# re-asserted until the compositor reports no focused window at all.
-park_injector() {
-  local address focused
-  address=$(injector_address)
-  hyprctl dispatch movetoworkspacesilent "${INJECTOR_WORKSPACE},address:${address}" >/dev/null
-  focused=$(hyprctl -j activewindow | jq -r '.address // ""')
-  [[ -z ${focused} ]]
-}
-wait_for "the injector window to leave the focus" 30 park_injector
+  # A hook whose source window holds the focus discards its own completion, and
+  # list-display-json marks that window's events read. Parking the injector out
+  # of focus is what lets the fixtures reach the popup — and keeps it out of
+  # frame. The terminal can ask for activation again after it maps, so the move
+  # is re-asserted until the compositor reports no focused window at all.
+  park_injector() {
+    local address focused
+    address=$(injector_address)
+    hyprctl dispatch movetoworkspacesilent "${INJECTOR_WORKSPACE},address:${address}" >/dev/null
+    focused=$(hyprctl -j activewindow | jq -r '.address // ""')
+    [[ -z ${focused} ]]
+  }
+  wait_for "the injector window to leave the focus" 30 park_injector
 
-touch "${RUN_DIR}/go"
-injection_is_done() { [[ -f ${RUN_DIR}/injected ]]; }
-wait_for "the fixture completions" 60 injection_is_done
+  touch "${RUN_DIR}/go"
+  injection_is_done() { [[ -f ${RUN_DIR}/injected ]]; }
+  wait_for "the fixture completions" 60 injection_is_done
 
-stored=$(env "${harness_env[@]}" agent-notifier list-json | jq '.events | length')
-[[ ${stored} =~ ^[0-9]+$ ]] ||
-  fail "list-json returned no count; see ${RUN_DIR}/injector.log"
-((stored == event_count)) ||
-  fail "the binary stored ${stored} of ${event_count} completions; see ${RUN_DIR}/injector.log"
+  stored=$(env "${harness_env[@]}" agent-notifier list-json | jq '.events | length')
+  [[ ${stored} =~ ^[0-9]+$ ]] ||
+    fail "list-json returned no count; see ${RUN_DIR}/injector.log"
+  ((stored == event_count)) ||
+    fail "the binary stored ${stored} of ${event_count} completions; see ${RUN_DIR}/injector.log"
 
-# Every fixture is captured within the same second, which would render as one
-# wall of "just now". Ageing them apart is what puts each relative-time branch
-# on the screenshot.
-state_file="${RUN_DIR}/state/agent-notifier/events.json"
-jq --argjson step "${FIXTURE_AGE_STEP_SECONDS}" \
-  '.events |= (to_entries | map(.value.createdAt =
-    ((.value.createdAt | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - .key * $step
-     | todateiso8601)) | map(.value))' "${state_file}" >"${state_file}.aged"
-mv "${state_file}.aged" "${state_file}"
+  # Every fixture is captured within the same second, which would render as one
+  # wall of "just now". Ageing them apart is what puts each relative-time branch
+  # on the screenshot.
+  state_file="${RUN_DIR}/state/agent-notifier/events.json"
+  jq --argjson step "${FIXTURE_AGE_STEP_SECONDS}" \
+    '.events |= (to_entries | map(.value.createdAt =
+      ((.value.createdAt | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - .key * $step
+       | todateiso8601)) | map(.value))' "${state_file}" >"${state_file}.aged"
+  mv "${state_file}.aged" "${state_file}"
+fi
 
 # Without an explicit wayland platform Qt falls back to xcb: the shell loads and
 # nothing ever renders.
@@ -333,11 +384,21 @@ echo "${quickshell_pid}" >"${RUN_DIR}/quickshell.pid"
 probe() { qs ipc --pid "${quickshell_pid}" call harness probe 2>/dev/null; }
 probe_says() { probe | jq -e "$1" >/dev/null 2>&1; }
 widget_is_filled() { probe_says ".events == ${event_count}"; }
-wait_for "the widget to list the completions" 30 widget_is_filled
+cli_reported_missing() { probe_says '.cliMissing and .face == "binary-missing"'; }
+if [[ ${scenario} == binary-missing ]]; then
+  wait_for "the missing-binary state" 30 cli_reported_missing
+else
+  wait_for "the widget to list the completions" 30 widget_is_filled
+fi
 
 qs ipc --pid "${quickshell_pid}" call io.github.bengous.agent-notifier open >/dev/null
 popup_is_open() { probe_says '.popupOpen'; }
 wait_for "the popup to open" 30 popup_is_open
+
+card_is_visible() { probe_says '.cardVisible'; }
+if [[ ${scenario} == binary-missing ]]; then
+  wait_for "the setup card" 10 card_is_visible
+fi
 
 # The compositor greets every run with its own deprecation notices, and they
 # would land on the screenshot.
@@ -370,7 +431,29 @@ fi
 screenshot_bytes=$(stat -c %s -- "${screenshot}")
 ((screenshot_bytes > MINIMUM_SCREENSHOT_BYTES)) || fail "the screenshot is empty"
 
-echo "harness: ${event_count} completions injected, popup captured on ${monitor} (${monitor_size})"
+if [[ ${scenario} == binary-missing ]]; then
+  # The verb reaches launchSetupHelp() directly; the shadowed helper turns the
+  # detached launch into one loggable line.
+  qs ipc --pid "${quickshell_pid}" call harness launchSetupHelp >/dev/null
+  launch_is_logged() { grep -q "agent-notifier doctor" "${RUN_DIR}/launch.log" 2>/dev/null; }
+  wait_for "the doctor launch log" 10 launch_is_logged
+
+  # Restoring the binary must recover the widget within one re-probe window.
+  ln -s "${REPO_DIR}/target/debug/agent-notifier" "${RUN_DIR}/bin/agent-notifier"
+  cli_recovered() { probe_says '.cliMissing | not'; }
+  wait_for "the binary recovery" 30 cli_recovered
+
+  # The reverse degradation: a binary that disappears after a successful run
+  # must fail the next refresh, not coast on the last exit it saw.
+  rm "${RUN_DIR}/bin/agent-notifier"
+  qs ipc --pid "${quickshell_pid}" call io.github.bengous.agent-notifier close >/dev/null
+  qs ipc --pid "${quickshell_pid}" call io.github.bengous.agent-notifier open >/dev/null
+  wait_for "the degradation back to binary-missing" 10 cli_reported_missing
+
+  echo "harness: binary-missing journey replayed: card shown, doctor CTA logged, recovery and degradation observed"
+else
+  echo "harness: ${event_count} completions injected, popup captured on ${monitor} (${monitor_size})"
+fi
 echo "harness: screenshot ${screenshot}"
 
 if ((keep == 0)); then

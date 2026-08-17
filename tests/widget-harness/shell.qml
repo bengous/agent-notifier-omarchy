@@ -30,9 +30,15 @@ ShellRoot {
         events: widget.events.length,
         unread: widget.unreadCount,
         popupOpen: widget.popupOpen,
-        cliMissing: widget.cliMissing
+        cliMissing: widget.cliMissing,
+        face: widget.face,
+        needsSetup: widget.needsSetup,
+        cardVisible: widget.face === "binary-missing" || widget.face === "setup",
+        setupReady: widget.setup ? widget.setup.ready : null
       })
     }
+
+    function launchSetupHelp(): void { widget.launchSetupHelp() }
   }
 
   PanelWindow {
