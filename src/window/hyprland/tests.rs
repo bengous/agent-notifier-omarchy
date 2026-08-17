@@ -1,4 +1,5 @@
 use super::*;
+use crate::window::proc::process_is_alive;
 
 #[test]
 fn dispatch_succeeded_accepts_ok_response() {
@@ -53,25 +54,10 @@ fn client_with_focus_history(address: &str, focus_history_id: Option<i64>) -> Hy
 }
 
 #[test]
-fn a_process_ref_tracks_liveness_through_proc() -> Result<(), Box<dyn std::error::Error>> {
-    let own_pid = i64::from(std::process::id());
-    let own = process_ref(own_pid).ok_or("no process ref for the test process")?;
-
-    assert!(process_is_alive(&own));
-    assert!(!process_is_alive(&ProcessRef {
-        start_time: own.start_time.wrapping_add(1),
-        ..own
-    }));
-    assert_eq!(process_ref(999_999_999), None);
-    Ok(())
-}
-
-#[test]
 fn captures_the_window_shell_as_the_source_process() -> Result<(), Box<dyn std::error::Error>> {
     let own_pid = i64::from(std::process::id());
-    let parent_pid = read_proc_parent_pid(own_pid).ok_or("no parent pid")?;
     let clients = vec![HyprClient {
-        pid: Some(parent_pid),
+        pid: Some(current_parent_pid()),
         ..client_with_focus_history("0xshell", Some(2))
     }];
 

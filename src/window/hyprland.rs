@@ -2,12 +2,12 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-use crate::event::{AgentEvent, FocusOutcome, ProcessRef, SourceWindow};
+use crate::event::{AgentEvent, FocusOutcome, SourceWindow};
 use crate::exec::command_output;
+use crate::window::proc::{current_parent_pid, pid_chain, process_ref};
 
 #[derive(Debug, Clone, Deserialize)]
 struct HyprWorkspace {
@@ -226,57 +226,6 @@ fn resolve_source_window_from_pid_chain(
         previous = Some(pid);
     }
     None
-}
-
-pub(crate) fn process_ref(pid: i64) -> Option<ProcessRef> {
-    Some(ProcessRef {
-        pid,
-        start_time: read_proc_start_time(pid)?,
-    })
-}
-
-pub(crate) fn process_is_alive(process: &ProcessRef) -> bool {
-    read_proc_start_time(process.pid) == Some(process.start_time)
-}
-
-fn read_proc_start_time(pid: i64) -> Option<u64> {
-    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    let close_paren = stat.rfind(')')?;
-    stat[close_paren + 2..]
-        .split_whitespace()
-        .nth(19)?
-        .parse()
-        .ok()
-}
-
-fn read_proc_parent_pid(pid: i64) -> Option<i64> {
-    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    let close_paren = stat.rfind(')')?;
-    stat[close_paren + 2..]
-        .split_whitespace()
-        .nth(1)?
-        .parse::<i64>()
-        .ok()
-        .filter(|parent| *parent > 0)
-}
-
-fn current_parent_pid() -> i64 {
-    read_proc_parent_pid(i64::from(std::process::id()))
-        .unwrap_or_else(|| i64::from(std::process::id()))
-}
-
-fn pid_chain(start_pid: i64, max_depth: usize) -> Vec<i64> {
-    let mut chain = Vec::new();
-    let mut current = Some(start_pid);
-    for _ in 0..max_depth {
-        let Some(pid) = current else { break };
-        if pid <= 0 {
-            break;
-        }
-        chain.push(pid);
-        current = read_proc_parent_pid(pid);
-    }
-    chain
 }
 
 #[cfg(test)]

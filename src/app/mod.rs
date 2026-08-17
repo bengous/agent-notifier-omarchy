@@ -22,7 +22,7 @@ use crate::event::{
 };
 use crate::exec::{run_command, run_command_owned, DEFAULT_TIMEOUT};
 use crate::intake;
-use crate::window::hyprland;
+use crate::window::{hyprland, proc};
 use crate::{STATUS_ERROR_CLASS, UNAVAILABLE_STATUS_JSON, UNAVAILABLE_STATUS_TOOLTIP};
 
 fn set_focused_window_read(state: AgentNotifierState) -> AgentNotifierState {
@@ -69,7 +69,7 @@ fn event_has_live_source(event: &AgentEvent, existing_addresses: &HashSet<String
         .workspace
         .as_ref()
         .is_some_and(|workspace| match &workspace.source_process {
-            Some(process) => hyprland::process_is_alive(process),
+            Some(process) => proc::process_is_alive(process),
             None => workspace
                 .candidate_addresses()
                 .iter()

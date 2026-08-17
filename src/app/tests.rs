@@ -5,7 +5,7 @@ use crate::test_fixtures::{
     base_event, base_pi_event, event_with_address, event_with_candidates, event_with_pid,
     event_with_session, event_with_source_process, fixture_clock, state_of,
 };
-use crate::window::hyprland::process_ref;
+use crate::window::proc::process_ref;
 use std::fs;
 use tempfile::tempdir;
 
