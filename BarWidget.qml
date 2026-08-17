@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
@@ -11,8 +10,6 @@ import "js/time.js" as Time
 BarWidget {
   id: root
   moduleName: "io.github.bengous.agent-notifier"
-
-  readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/agent-notifier"
 
   property var events: []
   property var versionInfo: null
@@ -129,6 +126,8 @@ BarWidget {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
+  Component.onCompleted: refresh()
+
   IpcHandler {
     target: "io.github.bengous.agent-notifier"
 
@@ -145,8 +144,11 @@ BarWidget {
     onTriggered: root.nowMs = Date.now()
   }
 
+  // The binary owns the state path and reports it as statePath; the watch
+  // starts once version-json delivers it and stays off with an older binary
+  // rather than deriving a second path from the environment (README, State).
   FileView {
-    path: root.stateDir + "/events.json"
+    path: root.versionInfo ? String(root.versionInfo.statePath || "") : ""
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
