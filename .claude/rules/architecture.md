@@ -41,6 +41,7 @@ Import edges, enforced by `tests/architecture.rs`:
 
 - Allowed: main → app; app → every concept; {intake, window} → {event types, exec}; display → event; alert → exec; event → nothing.
 - Forbidden: event → anything; anything → app; intake ↔ window; alert → {event, display}; any pure core → exec; app → {exec, std::fs}.
+- Edges that still break these rules live in the `PLANNED_DEBT` list of `tests/architecture.rs`, each tagged with the deepening that removes it. The list only shrinks: a stale entry fails the test, a new one needs a reason.
 
 Guardrails:
 

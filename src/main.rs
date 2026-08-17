@@ -7,7 +7,7 @@ mod intake;
 mod test_fixtures;
 mod window;
 
-use app::cli::CliCommand;
+use crate::app::cli::CliCommand;
 
 const UNAVAILABLE_STATUS_JSON: &str =
     r#"{"text":"agents !","tooltip":"Agent notifier unavailable","class":"error"}"#;
