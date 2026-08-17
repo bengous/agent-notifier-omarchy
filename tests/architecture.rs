@@ -47,22 +47,13 @@ const ALLOWED: &[(&str, &str)] = &[
 
 /// Edges that exist today and the deepening that removes each one. This list
 /// only ever shrinks: a stale entry fails `every_recorded_debt_is_still_real`.
-const PLANNED_DEBT: &[Debt] = &[
-    Debt {
-        from: "app",
-        to: "exec",
-        // TODO(C4): notify() and play_sound() become the alert concept, the
-        // only caller of the subprocess helpers left in this direction.
-        step: "C4",
-    },
-    Debt {
-        from: "app",
-        to: "main",
-        // TODO(C4): the unavailable-status constants are display strings and
-        // belong to display, not to the crate root.
-        step: "C4",
-    },
-];
+const PLANNED_DEBT: &[Debt] = &[Debt {
+    from: "app",
+    to: "main",
+    // TODO(C4): the unavailable-status constants are display strings and
+    // belong to display, not to the crate root.
+    step: "C4",
+}];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Debt {

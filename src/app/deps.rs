@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use std::io::{self, Read};
 use std::path::PathBuf;
 
+use crate::alert;
 use crate::event::store::state_path;
 use crate::event::{AgentEvent, FocusOutcome, SourceLiveness, SourceWindow};
 use crate::window::{hyprland, proc};
@@ -76,6 +77,6 @@ impl Deps for SystemDeps {
     }
 
     fn alert(&self, app_name: &str, title: &str, body: &str) {
-        super::alert(app_name, title, body);
+        alert::alert(app_name, title, body);
     }
 }

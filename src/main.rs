@@ -1,3 +1,4 @@
+mod alert;
 mod app;
 mod display;
 mod event;

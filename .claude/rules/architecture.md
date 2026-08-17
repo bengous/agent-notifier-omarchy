@@ -14,6 +14,7 @@ src/
 ├── exec.rs         shared subprocess + timeout; importable by adapter files only
 ├── app/            composition shell — sequences, never decides
 │   ├── cli.rs      argv → CliCommand, parsed once
+│   ├── deps.rs     the world run() needs (state path, clock, stdin, windows, alert) + its system adapter
 │   ├── mod.rs      run(cmd, deps) dispatch
 │   ├── capture.rs  hooks: intake → window (workspace passed by value) → event → store → alert
 │   ├── query.rs    status-json / list-display-json; mark-read-on-focus is a named fn here
@@ -48,4 +49,5 @@ Guardrails:
 
 - app handlers sequence only — any new decision is a pure function in a concept core, tested there.
 - Adapters are `pub(in crate::<concept>)`; `unreachable_pub = deny` stays in `[lints.rust]`.
-- No trait while a seam has a single adapter. Escape hatch if hard enforcement is ever needed: a two-crate workspace (pure domain lib + binary with adapters), never one crate per concept.
+- No trait while a seam has a single adapter. `app::Deps` is the one seam with two — the system and the fake every end-to-end test drives — so it is a trait; a new dependency joins it instead of growing a second seam.
+- Escape hatch if hard enforcement is ever needed: a two-crate workspace (pure domain lib + binary with adapters), never one crate per concept.

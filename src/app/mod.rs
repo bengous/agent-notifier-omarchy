@@ -2,10 +2,7 @@ pub(crate) mod cli;
 mod deps;
 
 use serde::Serialize;
-use std::env;
 use std::io;
-use std::path::{Path, PathBuf};
-use std::thread;
 
 use crate::app::cli::CliCommand;
 use crate::display::{
@@ -17,7 +14,6 @@ use crate::event::{
     mark_focused_window_events_read, prune_stale_events, set_event_status, Agent, AgentEvent,
     AgentNotifierState, CaptureDecision, EventStatus, FocusOutcome,
 };
-use crate::exec::{run_command, run_command_owned, DEFAULT_TIMEOUT};
 use crate::intake;
 use crate::{STATUS_ERROR_CLASS, UNAVAILABLE_STATUS_TOOLTIP};
 
@@ -41,77 +37,6 @@ fn read_state_with_focused_window_read(
     with_state_update(&deps.state_path()?, deps.now(), |state| {
         mark_focused_window_events_read(state, focused)
     })
-}
-
-fn prefix_share_dir() -> PathBuf {
-    env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(Path::to_path_buf))
-        .and_then(|dir| dir.parent().map(Path::to_path_buf))
-        .map_or_else(installed_share_dir, |dir| dir.join("share/agent-notifier"))
-}
-
-fn installed_share_dir() -> PathBuf {
-    env::var_os("HOME")
-        .map_or_else(|| PathBuf::from(""), PathBuf::from)
-        .join(".local/share/agent-notifier")
-}
-
-fn share_dir() -> PathBuf {
-    if let Some(override_dir) = env::var_os("AGENT_NOTIFIER_SHARE_DIR") {
-        if !override_dir.is_empty() {
-            return PathBuf::from(override_dir);
-        }
-    }
-    let exe = env::current_exe().unwrap_or_default();
-    if exe.to_string_lossy().contains("/.local/") {
-        installed_share_dir()
-    } else {
-        prefix_share_dir()
-    }
-}
-
-fn sound_file() -> PathBuf {
-    if let Some(file) = env::var_os("AGENT_NOTIFIER_SOUND_FILE") {
-        if !file.is_empty() {
-            return PathBuf::from(file);
-        }
-    }
-    env::var_os("AGENT_NOTIFIER_SOUND_DIR")
-        .map_or_else(share_dir, PathBuf::from)
-        .join("agent-complete.mp3")
-}
-
-fn play_sound() {
-    if env::var("AGENT_NOTIFIER_SOUND").as_deref() == Ok("0") {
-        return;
-    }
-    let file = sound_file().to_string_lossy().into_owned();
-    if run_command(
-        &["mpv", "--no-video", "--really-quiet", &file],
-        DEFAULT_TIMEOUT,
-    )
-    .unwrap_or(1)
-        == 0
-    {
-        return;
-    }
-    let _ = run_command(&["canberra-gtk-play", "-f", &file], DEFAULT_TIMEOUT);
-}
-
-fn alert(app_name: &str, title: &str, body: &str) {
-    let notification = [
-        "notify-send".to_owned(),
-        format!("--app-name={app_name}"),
-        title.to_owned(),
-        body.to_owned(),
-    ];
-    let sound = thread::spawn(play_sound);
-    let notify = thread::spawn(move || {
-        let _ = run_command_owned(&notification, DEFAULT_TIMEOUT);
-    });
-    let _ = sound.join();
-    let _ = notify.join();
 }
 
 fn capture_completion_event(agent: Agent, event: &AgentEvent, deps: &dyn Deps) -> io::Result<()> {
