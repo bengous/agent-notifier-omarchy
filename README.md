@@ -348,8 +348,15 @@ the binary's hooks, opens the popup over its IPC and captures it with `grim`:
 tests/widget-harness/run.sh --events 7
 tests/widget-harness/run.sh --keep   # leave it up to drive by hand
 tests/widget-harness/run.sh --scenario binary-missing   # setup card, CTA, recovery
+tests/widget-harness/run.sh --scenario onboarding       # the whole Configure journey
 tests/widget-harness/stop.sh
 ```
+
+The `onboarding` scenario replays what a user does from the marketplace: it
+starts with no binary on the widget's `PATH`, clicks Configure through the
+widget's own verb, runs the real `scripts/onboard.sh` against a fake `HOME` and
+a local release archive, and only then asks the widget to list a completion.
+It reaches no network and writes nothing outside its run directory.
 
 The screenshot lands in `target/widget-harness/popup.png`. The harness runs in a
 window on the session that starts it, and floats that window at a fixed size so

@@ -27,6 +27,12 @@ INJECTOR_TITLE="agent-notifier fixtures"
 INJECTOR_WORKSPACE=9
 FIXTURE_AGE_STEP_SECONDS=1020
 MINIMUM_SCREENSHOT_BYTES=1024
+# The onboarding scenario runs the real script against a fake home and a local
+# release archive: nothing it writes leaves RUN_DIR, and nothing it reads
+# leaves this machine.
+ONBOARD_HOME="${RUN_DIR}/home"
+ONBOARD_BINDIR="${ONBOARD_HOME}/.local/bin"
+ONBOARD_ARCHIVE="${RUN_DIR}/agent-notifier-harness.tar.gz"
 
 AGENTS=(claude codex pi)
 PROJECTS=(alpha beta)
@@ -51,8 +57,10 @@ Usage: tests/widget-harness/run.sh [--events N] [--out FILE] [--keep] [--scenari
   --events N        completions to inject through the real binary (default 5)
   --out FILE        screenshot path (default target/widget-harness/<scenario>.png)
   --keep            leave the harness running instead of stopping it
-  --scenario NAME   default, or binary-missing: no binary on PATH, setup card
-                    shown, Configure CTA logged, recovery after the binary returns
+  --scenario NAME   default; binary-missing: no binary on PATH, setup card
+                    shown, Configure CTA logged, recovery after the binary
+                    returns; onboarding: the same start, then the real
+                    scripts/onboard.sh installs and wires everything
 EOF
 }
 
@@ -107,9 +115,16 @@ on_exit() {
 trap on_exit EXIT
 
 case ${scenario} in
-  default | binary-missing) ;;
+  default | binary-missing | onboarding) ;;
   *) fail "unknown scenario ${scenario}" ;;
 esac
+
+# Codex keeps its config and its sessions in one directory, and the onboarding
+# scenario wants both inside its fake home: that is where setup writes.
+codex_dir="${RUN_DIR}/codex"
+if [[ ${scenario} == onboarding ]]; then
+  codex_dir="${ONBOARD_HOME}/.codex"
+fi
 if [[ -z ${screenshot} ]]; then
   if [[ ${scenario} == default ]]; then
     screenshot="${REPO_DIR}/target/widget-harness/popup.png"
@@ -137,13 +152,15 @@ wait_for() {
 }
 
 "${HARNESS_DIR}/stop.sh" >/dev/null
-mkdir -p "${RUN_DIR}"/{bin,state,fixtures,projects,transcripts,codex/sessions,shell}
+mkdir -p "${RUN_DIR}"/{bin,state,fixtures,projects,transcripts,shell}
+mkdir -p -- "${codex_dir}/sessions"
 mkdir -p -- "$(dirname -- "${screenshot}")"
 
 cargo build --quiet --manifest-path "${REPO_DIR}/Cargo.toml"
-# The binary-missing scenario starts with no binary anywhere on the widget's
-# PATH; the run restores this symlink later to observe the recovery.
-if [[ ${scenario} != binary-missing ]]; then
+# Every scenario but the default starts with no binary anywhere on the widget's
+# PATH; binary-missing restores this symlink later to observe the recovery, and
+# onboarding lets the real script install one.
+if [[ ${scenario} == default ]]; then
   ln -s "${REPO_DIR}/target/debug/agent-notifier" "${RUN_DIR}/bin/agent-notifier"
 fi
 # The hook always alerts. A harness run must not reach the user's notification
@@ -167,10 +184,34 @@ ln -s "${OMARCHY_SHELL_DIR}/Commons" "${RUN_DIR}/shell/Commons"
 ln -s "${REPO_DIR}" "${RUN_DIR}/shell/AgentNotifier"
 cp "${HARNESS_DIR}/shell.qml" "${RUN_DIR}/shell/shell.qml"
 
-if [[ ${scenario} != binary-missing ]]; then
+seed_projects() {
+  local project
   for project in "${PROJECTS[@]}"; do
     git init --quiet -b main "${RUN_DIR}/projects/${project}"
   done
+}
+
+# The onboarding scenario needs a machine that looks bare: an empty home with
+# the two harness directories, a stub for each harness so doctor diagnoses it
+# at all, and a local release archive in the layout the real one ships.
+seed_onboarding() {
+  local harness archive_name
+  mkdir -p "${ONBOARD_HOME}/.claude" "${RUN_DIR}/pack/data"
+  for harness in claude codex; do
+    printf '#!/bin/sh\nexit 0\n' >"${RUN_DIR}/bin/${harness}"
+    chmod +x "${RUN_DIR}/bin/${harness}"
+  done
+  cp "${REPO_DIR}/target/debug/agent-notifier" "${RUN_DIR}/pack/agent-notifier"
+  cp "${REPO_DIR}/data/agent-complete.mp3" "${RUN_DIR}/pack/data/agent-complete.mp3"
+  tar -czf "${ONBOARD_ARCHIVE}" -C "${RUN_DIR}/pack" agent-notifier data
+  archive_name="$(basename -- "${ONBOARD_ARCHIVE}")"
+  (cd -- "${RUN_DIR}" && sha256sum "${archive_name}" >"${ONBOARD_ARCHIVE}.sha256")
+}
+
+if [[ ${scenario} == default ]]; then
+  seed_projects
+elif [[ ${scenario} == onboarding ]]; then
+  seed_onboarding
 fi
 
 write_fixtures() {
@@ -194,7 +235,7 @@ write_fixtures() {
       codex)
         jq -nc --arg title "${title}" \
           '{type:"event_msg", payload:{type:"user_message", message:$title}}' \
-          >"${RUN_DIR}/codex/sessions/rollout-${session}.jsonl"
+          >"${codex_dir}/sessions/rollout-${session}.jsonl"
         jq -nc --arg cwd "${project}" --arg id "${session}" \
           '{cwd:$cwd, session_id:$id}' >"${payload}.json"
         echo hook >"${payload}.cmd"
@@ -210,7 +251,7 @@ write_fixtures() {
     esac
   done
 }
-if [[ ${scenario} != binary-missing ]]; then
+if [[ ${scenario} == default ]]; then
   write_fixtures
 fi
 
@@ -306,8 +347,13 @@ monitor_size=$(hyprctl -j monitors | jq -r '"\(.[0].width)x\(.[0].height)"')
 # scenario needs the widget's lookup to fail, so every directory holding the
 # binary is dropped from the PATH the harness hands to quickshell.
 harness_path="${RUN_DIR}/bin:${PATH}"
-if [[ ${scenario} == binary-missing ]]; then
+if [[ ${scenario} != default ]]; then
   harness_path="${RUN_DIR}/bin"
+  # The onboarding install target leads: it holds nothing yet, so the widget
+  # still starts on the missing-binary face.
+  if [[ ${scenario} == onboarding ]]; then
+    harness_path="${ONBOARD_BINDIR}:${harness_path}"
+  fi
   IFS=: read -ra path_dirs <<<"${PATH}"
   for dir in "${path_dirs[@]}"; do
     if [[ -n ${dir} && ! -x ${dir}/agent-notifier ]]; then
@@ -321,11 +367,25 @@ harness_env=(
   HYPRLAND_INSTANCE_SIGNATURE="${HYPRLAND_INSTANCE_SIGNATURE}"
   PATH="${harness_path}"
   XDG_STATE_HOME="${RUN_DIR}/state"
-  CODEX_HOME="${RUN_DIR}/codex"
+  CODEX_HOME="${codex_dir}"
   AGENT_NOTIFIER_SOUND=0
 )
+# Only this scenario moves HOME: the hook configs it writes must be the ones
+# the widget's own probe reads back. The XDG directories stay real so omarchy's
+# Ui and Commons keep finding the theme they render with.
+if [[ ${scenario} == onboarding ]]; then
+  harness_env+=(
+    HOME="${ONBOARD_HOME}"
+    XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}"
+    XDG_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
+    XDG_CACHE_HOME="${XDG_CACHE_HOME:-${HOME}/.cache}"
+    PREFIX="${ONBOARD_HOME}/.local"
+    AGENT_NOTIFIER_ONBOARD_ARCHIVE="${ONBOARD_ARCHIVE}"
+  )
+fi
 
-if [[ ${scenario} != binary-missing ]]; then
+inject_fixtures() {
+  local stored state_file
   env "${harness_env[@]}" foot --app-id="${INJECTOR_CLASS}" --title="${INJECTOR_TITLE}" \
     bash "${HARNESS_DIR}/inject.sh" "${RUN_DIR}" >"${RUN_DIR}/injector.log" 2>&1 &
   echo $! >"${RUN_DIR}/injector.pid"
@@ -370,6 +430,10 @@ if [[ ${scenario} != binary-missing ]]; then
       ((.value.createdAt | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) - .key * $step
        | todateiso8601)) | map(.value))' "${state_file}" >"${state_file}.aged"
   mv "${state_file}.aged" "${state_file}"
+}
+
+if [[ ${scenario} == default ]]; then
+  inject_fixtures
 fi
 
 # Without an explicit wayland platform Qt falls back to xcb: the shell loads and
@@ -385,10 +449,10 @@ probe() { qs ipc --pid "${quickshell_pid}" call harness probe 2>/dev/null; }
 probe_says() { probe | jq -e "$1" >/dev/null 2>&1; }
 widget_is_filled() { probe_says ".events == ${event_count}"; }
 cli_reported_missing() { probe_says '.cliMissing and .face == "binary-missing"'; }
-if [[ ${scenario} == binary-missing ]]; then
-  wait_for "the missing-binary state" 30 cli_reported_missing
-else
+if [[ ${scenario} == default ]]; then
   wait_for "the widget to list the completions" 30 widget_is_filled
+else
+  wait_for "the missing-binary state" 30 cli_reported_missing
 fi
 
 qs ipc --pid "${quickshell_pid}" call io.github.bengous.agent-notifier open >/dev/null
@@ -396,8 +460,49 @@ popup_is_open() { probe_says '.popupOpen'; }
 wait_for "the popup to open" 30 popup_is_open
 
 card_is_visible() { probe_says '.cardVisible'; }
-if [[ ${scenario} == binary-missing ]]; then
+if [[ ${scenario} != default ]]; then
   wait_for "the setup card" 10 card_is_visible
+fi
+
+# The whole marketplace journey, in the order a user lives it: the card is up,
+# the CTA hands one script to the terminal helper, that script installs and
+# wires everything, and the widget notices on its own.
+run_onboarding() {
+  qs ipc --pid "${quickshell_pid}" call harness launchOnboarding >/dev/null
+  onboarding_is_logged() { grep -q "scripts/onboard.sh" "${RUN_DIR}/launch.log" 2>/dev/null; }
+  wait_for "the onboarding launch log" 10 onboarding_is_logged
+
+  # The shadowed helper only logs the launch, so the run executes the script
+  # itself — same command, same environment as the widget would give it.
+  env "${harness_env[@]}" bash "${REPO_DIR}/scripts/onboard.sh" --yes \
+    >"${RUN_DIR}/onboard.log" 2>&1 ||
+    fail "onboard.sh failed; see ${RUN_DIR}/onboard.log"
+
+  [[ -x ${ONBOARD_BINDIR}/agent-notifier ]] ||
+    fail "onboard.sh installed no binary in ${ONBOARD_BINDIR}"
+  grep -q "agent-notifier claude-hook" "${ONBOARD_HOME}/.claude/settings.json" ||
+    fail "the Claude hook is missing from the onboarded settings"
+  grep -q "agent-notifier hook" "${codex_dir}/config.toml" ||
+    fail "the Codex hook is missing from the onboarded config"
+
+  cli_recovered() { probe_says '.cliMissing | not'; }
+  wait_for "the binary recovery" 30 cli_recovered
+  setup_is_ready() { probe_says '.setupReady'; }
+  wait_for "the setup to read ready" 30 setup_is_ready
+
+  # A wired machine ends where the widget's own job starts: one completion,
+  # captured by the binary this journey installed.
+  seed_projects
+  write_fixtures
+  inject_fixtures
+  qs ipc --pid "${quickshell_pid}" call io.github.bengous.agent-notifier close >/dev/null
+  qs ipc --pid "${quickshell_pid}" call io.github.bengous.agent-notifier open >/dev/null
+  wait_for "the popup to reopen" 30 popup_is_open
+  wait_for "the widget to list the completions" 30 widget_is_filled
+}
+
+if [[ ${scenario} == onboarding ]]; then
+  run_onboarding
 fi
 
 # The compositor greets every run with its own deprecation notices, and they
@@ -451,6 +556,8 @@ if [[ ${scenario} == binary-missing ]]; then
   wait_for "the degradation back to binary-missing" 10 cli_reported_missing
 
   echo "harness: binary-missing journey replayed: card shown, Configure CTA logged, recovery and degradation observed"
+elif [[ ${scenario} == onboarding ]]; then
+  echo "harness: onboarding journey replayed: card shown, Configure CTA logged, binary installed in ${ONBOARD_BINDIR}, claude and codex wired, ${event_count} completions listed"
 else
   echo "harness: ${event_count} completions injected, popup captured on ${monitor} (${monitor_size})"
 fi
