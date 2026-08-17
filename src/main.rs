@@ -9,12 +9,7 @@ mod test_fixtures;
 mod window;
 
 use crate::app::cli::CliCommand;
-use crate::app::SystemDeps;
-
-const UNAVAILABLE_STATUS_JSON: &str =
-    r#"{"text":"agents !","tooltip":"Agent notifier unavailable","class":"error"}"#;
-const UNAVAILABLE_STATUS_TOOLTIP: &str = "Agent notifier unavailable";
-const STATUS_ERROR_CLASS: &str = "error";
+use crate::app::{SystemDeps, UNAVAILABLE_STATUS_JSON};
 
 /// Exit code used when a hook cannot persist its event.
 ///

@@ -29,6 +29,24 @@ pub(crate) struct StatusOutput {
     pub(crate) class: String,
 }
 
+/// The status a consumer gets when this binary cannot produce a real one.
+/// Written out because it has to survive the failure of serialization itself;
+/// `the_unavailable_status_literal_serializes_the_unavailable_output` keeps the
+/// two spellings equal.
+pub(crate) const UNAVAILABLE_STATUS_JSON: &str =
+    r#"{"text":"agents !","tooltip":"Agent notifier unavailable","class":"error"}"#;
+
+const UNAVAILABLE_STATUS_TOOLTIP: &str = "Agent notifier unavailable";
+const STATUS_ERROR_CLASS: &str = "error";
+
+pub(crate) fn unavailable_status_output() -> StatusOutput {
+    StatusOutput {
+        text: "agents !".to_owned(),
+        tooltip: UNAVAILABLE_STATUS_TOOLTIP.to_owned(),
+        class: STATUS_ERROR_CLASS.to_owned(),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BuildInfo {

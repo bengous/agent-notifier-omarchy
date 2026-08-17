@@ -6,7 +6,8 @@ use std::io;
 
 use crate::app::cli::CliCommand;
 use crate::display::{
-    build_info, display_state_from_events, event_label, status_output, BuildInfo, StatusOutput,
+    build_info, display_state_from_events, event_label, status_output, unavailable_status_output,
+    BuildInfo,
 };
 use crate::event::store::{read_state, with_state_update};
 use crate::event::{
@@ -15,8 +16,8 @@ use crate::event::{
     AgentNotifierState, CaptureDecision, EventStatus, FocusOutcome,
 };
 use crate::intake;
-use crate::{STATUS_ERROR_CLASS, UNAVAILABLE_STATUS_TOOLTIP};
 
+pub(crate) use crate::display::UNAVAILABLE_STATUS_JSON;
 pub(crate) use deps::{Deps, SystemDeps};
 
 fn mark_address_read(address: &str, deps: &dyn Deps) -> io::Result<()> {
@@ -130,14 +131,6 @@ fn crate_build_info(deps: &dyn Deps) -> BuildInfo {
         env!("AGENT_NOTIFIER_COMMIT_DATE"),
         state_path.as_deref(),
     )
-}
-
-fn unavailable_status_output() -> StatusOutput {
-    StatusOutput {
-        text: "agents !".to_owned(),
-        tooltip: UNAVAILABLE_STATUS_TOOLTIP.to_owned(),
-        class: STATUS_ERROR_CLASS.to_owned(),
-    }
 }
 
 fn usage() -> &'static str {

@@ -18,13 +18,6 @@ fn the_build_script_always_supplies_commit_metadata() {
 }
 
 #[test]
-fn unavailable_status_output_is_visible() {
-    let output = unavailable_status_output();
-    assert_eq!(output.text, "agents !");
-    assert_eq!(output.class, "error");
-}
-
-#[test]
 fn hook_failures_never_block_an_agent_turn() {
     for command in [
         CliCommand::Hook,

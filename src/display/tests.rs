@@ -294,3 +294,20 @@ fn ignores_read_events() {
         }
     );
 }
+
+#[test]
+fn the_unavailable_status_is_visibly_an_error() {
+    let output = unavailable_status_output();
+    assert_eq!(output.text, "agents !");
+    assert_eq!(output.class, "error");
+}
+
+#[test]
+fn the_unavailable_status_literal_serializes_the_unavailable_output(
+) -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(
+        serde_json::to_string(&unavailable_status_output())?,
+        UNAVAILABLE_STATUS_JSON
+    );
+    Ok(())
+}
