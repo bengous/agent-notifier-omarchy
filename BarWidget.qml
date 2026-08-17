@@ -433,14 +433,13 @@ BarWidget {
         Layout.fillWidth: true
         spacing: Style.spacing.sm
 
-        Button {
+        FooterButton {
           id: infoButton
           iconText: "󰋼"
           iconSize: Style.font.iconSmall
-          foreground: infoButton.hot ? root.foreground : root.dim
+          hotForeground: root.foreground
+          idleForeground: root.dim
           fontFamily: root.fontFamily
-          horizontalPadding: Style.space(5)
-          verticalPadding: Style.space(3)
 
           // Button's built-in tooltip centers on the button and would clip
           // outside the card-sized popup surface; x: 0 keeps it inside.
@@ -454,25 +453,19 @@ BarWidget {
 
         Item { Layout.fillWidth: true }
 
-        Button {
-          id: clearRead
+        FooterButton {
           text: "Clear read"
-          foreground: clearRead.hot ? root.foreground : root.dim
+          hotForeground: root.foreground
+          idleForeground: root.dim
           fontFamily: root.fontFamily
-          fontSize: Style.font.caption
-          horizontalPadding: Style.space(5)
-          verticalPadding: Style.space(3)
           onClicked: root.enqueue(["clear-read"])
         }
 
-        Button {
-          id: clearAll
+        FooterButton {
           text: "Clear all"
-          foreground: clearAll.hot ? root.foreground : root.dim
+          hotForeground: root.foreground
+          idleForeground: root.dim
           fontFamily: root.fontFamily
-          fontSize: Style.font.caption
-          horizontalPadding: Style.space(5)
-          verticalPadding: Style.space(3)
           onClicked: root.enqueue(["clear-all"])
         }
       }
