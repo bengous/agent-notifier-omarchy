@@ -4,8 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::env;
-use std::io::{self, BufRead, BufReader, Read};
-use std::os::unix::net::UnixStream;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
@@ -244,47 +243,12 @@ fn handle_focused_window_read() -> io::Result<()> {
     Ok(())
 }
 
-fn parse_focused_window_address(line: &str) -> Option<String> {
-    let payload = line.strip_prefix("activewindowv2>>")?.trim();
-    if payload.is_empty() || payload == "," {
-        return None;
-    }
-    // hyprctl reports `0x…`; the socket payload may omit the prefix. Normalize to
-    // the hyprctl form so stored addresses compare byte-for-byte.
-    Some(if payload.starts_with("0x") {
-        payload.to_owned()
-    } else {
-        format!("0x{payload}")
-    })
-}
-
 fn handle_watch_focused_window() -> io::Result<()> {
-    let socket_path = hyprland::event_socket_path().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::NotFound, "Hyprland event socket not found")
-    })?;
-    let mut backoff = Duration::from_millis(250);
-    loop {
-        match UnixStream::connect(&socket_path) {
-            Ok(stream) => {
-                backoff = Duration::from_millis(250);
-                let reader = BufReader::new(stream);
-                for line in reader.lines() {
-                    let Ok(line) = line else { break };
-                    let Some(address) = parse_focused_window_address(&line) else {
-                        continue;
-                    };
-                    if let Err(error) = mark_address_read(&address, Utc::now()) {
-                        eprintln!("agent-notifier: state update failed: {error}");
-                    }
-                }
-            }
-            Err(error) => {
-                eprintln!("agent-notifier: hyprland socket unavailable: {error}");
-            }
+    hyprland::watch_focused_window(|address| {
+        if let Err(error) = mark_address_read(address, Utc::now()) {
+            eprintln!("agent-notifier: state update failed: {error}");
         }
-        thread::sleep(backoff);
-        backoff = (backoff * 2).min(Duration::from_secs(5));
-    }
+    })
 }
 
 fn focus_event(event: Option<&AgentEvent>, target: &str) -> io::Result<i32> {

@@ -1,6 +1,87 @@
 use super::*;
 use crate::window::proc::process_is_alive;
 
+/// Replay the watch over injected connections: `Some(payload)` is a socket that
+/// serves those lines then closes, `None` is a refused connection. The watch
+/// stops once every attempt is spent, and reports the addresses it saw and the
+/// delay it waited before each reconnection.
+fn watch_injected_stream(attempts: &[Option<&str>]) -> (Vec<String>, Vec<Duration>) {
+    let mut remaining = attempts.iter();
+    let mut addresses = Vec::new();
+    let mut delays = Vec::new();
+    watch_event_stream(
+        || match remaining.next() {
+            Some(Some(payload)) => Ok(io::Cursor::new(payload.as_bytes())),
+            _ => Err(io::Error::other("connection refused")),
+        },
+        |delay| {
+            delays.push(delay);
+            if delays.len() < attempts.len() {
+                ControlFlow::Continue(())
+            } else {
+                ControlFlow::Break(())
+            }
+        },
+        |address| addresses.push(address.to_owned()),
+    );
+    (addresses, delays)
+}
+
+#[test]
+fn parses_focused_window_addresses_from_socket_lines() {
+    assert_eq!(
+        parse_focused_window_address("activewindowv2>>5934e19c0f30").as_deref(),
+        Some("0x5934e19c0f30")
+    );
+    assert_eq!(
+        parse_focused_window_address("activewindowv2>>0x5934e19c0f30").as_deref(),
+        Some("0x5934e19c0f30")
+    );
+    assert_eq!(parse_focused_window_address("activewindowv2>>"), None);
+    assert_eq!(parse_focused_window_address("workspace>>3"), None);
+}
+
+#[test]
+fn reports_every_focused_window_change_of_a_connection() {
+    let (addresses, _) = watch_injected_stream(&[Some(
+        "activewindowv2>>0xaaa\nworkspace>>3\nactivewindowv2>>bbb\n",
+    )]);
+
+    assert_eq!(addresses, ["0xaaa", "0xbbb"]);
+}
+
+#[test]
+fn a_closed_socket_reconnects_and_keeps_reporting_changes() {
+    let (addresses, _) = watch_injected_stream(&[
+        Some("activewindowv2>>0xaaa\n"),
+        None,
+        Some("activewindowv2>>0xccc\n"),
+    ]);
+
+    assert_eq!(addresses, ["0xaaa", "0xccc"]);
+}
+
+#[test]
+fn the_reconnection_delay_doubles_up_to_its_ceiling() {
+    let (_, delays) = watch_injected_stream(&[None; 8]);
+
+    assert_eq!(
+        delays,
+        [250, 500, 1_000, 2_000, 4_000, 5_000, 5_000, 5_000].map(Duration::from_millis)
+    );
+}
+
+#[test]
+fn a_connection_resets_the_reconnection_delay() {
+    let (_, delays) =
+        watch_injected_stream(&[None, None, Some("activewindowv2>>0xaaa\n"), None, None]);
+
+    assert_eq!(
+        delays,
+        [250, 500, 250, 500, 1_000].map(Duration::from_millis)
+    );
+}
+
 #[test]
 fn dispatch_succeeded_accepts_ok_response() {
     assert!(dispatch_succeeded(Some("ok")));

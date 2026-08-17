@@ -23,20 +23,6 @@ fn stored_event_ids(path: &Path) -> Result<Vec<String>, Box<dyn std::error::Erro
 }
 
 #[test]
-fn parses_focused_window_addresses_from_socket_lines() {
-    assert_eq!(
-        parse_focused_window_address("activewindowv2>>5934e19c0f30").as_deref(),
-        Some("0x5934e19c0f30")
-    );
-    assert_eq!(
-        parse_focused_window_address("activewindowv2>>0x5934e19c0f30").as_deref(),
-        Some("0x5934e19c0f30")
-    );
-    assert_eq!(parse_focused_window_address("activewindowv2>>"), None);
-    assert_eq!(parse_focused_window_address("workspace>>3"), None);
-}
-
-#[test]
 fn the_build_script_always_supplies_commit_metadata() {
     assert!(!env!("AGENT_NOTIFIER_COMMIT").is_empty());
     assert!(!env!("AGENT_NOTIFIER_DIRTY").is_empty());

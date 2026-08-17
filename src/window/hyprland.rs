@@ -2,12 +2,19 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::io;
+use std::io::{self, BufRead, BufReader};
+use std::ops::ControlFlow;
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
+use std::thread;
+use std::time::Duration;
 
 use crate::event::{AgentEvent, FocusOutcome, SourceWindow};
 use crate::exec::command_output;
 use crate::window::proc::{current_parent_pid, pid_chain, process_ref};
+
+const RECONNECT_DELAY: Duration = Duration::from_millis(250);
+const RECONNECT_DELAY_MAX: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Deserialize)]
 struct HyprWorkspace {
@@ -49,7 +56,70 @@ pub(crate) fn focused_window_address() -> Option<String> {
     read_focused_client().and_then(|client| client.address)
 }
 
-pub(crate) fn event_socket_path() -> Option<PathBuf> {
+/// Report every focused-window change until the process ends.
+pub(crate) fn watch_focused_window(on_change: impl FnMut(&str)) -> io::Result<()> {
+    let socket_path = event_socket_path().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::NotFound, "Hyprland event socket not found")
+    })?;
+    watch_event_stream(
+        || UnixStream::connect(&socket_path).map(BufReader::new),
+        |delay| {
+            thread::sleep(delay);
+            ControlFlow::Continue(())
+        },
+        on_change,
+    );
+    Ok(())
+}
+
+/// The compositor outlives no daemon: a Hyprland restart drops the socket, so
+/// the watch reconnects forever. `wait` is what ends it — only a test breaks.
+fn watch_event_stream<R: BufRead>(
+    mut connect: impl FnMut() -> io::Result<R>,
+    mut wait: impl FnMut(Duration) -> ControlFlow<()>,
+    mut on_change: impl FnMut(&str),
+) {
+    let mut delay = RECONNECT_DELAY;
+    loop {
+        match connect() {
+            Ok(stream) => {
+                delay = RECONNECT_DELAY;
+                report_focused_window_changes(stream, &mut on_change);
+            }
+            Err(error) => eprintln!("agent-notifier: hyprland socket unavailable: {error}"),
+        }
+        if wait(delay).is_break() {
+            return;
+        }
+        delay = (delay * 2).min(RECONNECT_DELAY_MAX);
+    }
+}
+
+fn report_focused_window_changes(stream: impl BufRead, on_change: &mut impl FnMut(&str)) {
+    for line in stream.lines() {
+        let Ok(line) = line else { break };
+        let Some(address) = parse_focused_window_address(&line) else {
+            continue;
+        };
+        on_change(&address);
+    }
+}
+
+fn parse_focused_window_address(line: &str) -> Option<String> {
+    let payload = line.strip_prefix("activewindowv2>>")?.trim();
+    if payload.is_empty() || payload == "," {
+        return None;
+    }
+    // hyprctl reports `0x…`; the socket payload may omit the prefix. Normalize to
+    // the hyprctl form so stored addresses compare byte-for-byte.
+    Some(if payload.starts_with("0x") {
+        payload.to_owned()
+    } else {
+        format!("0x{payload}")
+    })
+}
+
+fn event_socket_path() -> Option<PathBuf> {
     let runtime_dir = env::var_os("XDG_RUNTIME_DIR")?;
     let signature = env::var_os("HYPRLAND_INSTANCE_SIGNATURE")?;
     Some(

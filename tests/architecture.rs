@@ -69,13 +69,6 @@ const PLANNED_DEBT: &[Debt] = &[
         // the event store, which owns directory creation.
         step: "C3",
     },
-    Debt {
-        from: "app",
-        to: "std::os::unix::net",
-        // TODO(C2): the event-socket loop and its protocol parse move into the
-        // Hyprland frontier, which owns reconnection.
-        step: "C2",
-    },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
