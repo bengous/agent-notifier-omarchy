@@ -315,6 +315,7 @@ the binary's hooks, opens the popup over its IPC and captures it with `grim`:
 ```bash
 tests/widget-harness/run.sh --events 7
 tests/widget-harness/run.sh --keep   # leave it up to drive by hand
+tests/widget-harness/run.sh --scenario binary-missing   # setup card, CTA, recovery
 tests/widget-harness/stop.sh
 ```
 
