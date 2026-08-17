@@ -20,9 +20,7 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      - run: scripts/check
 
   widget-contract:
     runs-on: ubuntu-latest
@@ -41,8 +39,4 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-modules --locked
-      # --cfg-test: every `mod tests;` sits behind #[cfg(test)], so without it
-      # each tests.rs reads as an orphan. Acyclicity is checked in
-      # tests/architecture.rs; `cargo modules dependencies --acyclic` reports a
-      # false cycle between a type and its own constructor.
-      - run: cargo modules orphans --deny --cfg-test
+      - run: scripts/check-modules

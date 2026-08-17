@@ -235,11 +235,18 @@ the newer fields until you do.
 
 ## Tests
 
+`scripts/check-all` runs every gate the CI runs, and is the one command to run
+before a commit:
+
 | Layer | Command | Runs |
 |---|---|---|
-| Binary | `cargo test` | CI |
+| Rust format, lints, tests | `scripts/check` | CI |
+| Module graph | `scripts/check-modules` | CI |
 | Widget contract | `tests/qml/run.sh` | CI |
 | Widget visual | `tests/widget-harness/run.sh` | Locally only |
+
+The CI runs these same scripts, so a green `scripts/check-all` is a green CI.
+`scripts/check-modules` needs `cargo install cargo-modules --locked`.
 
 `tests/qml/run.sh` projects an `events.json` v1 fixture through the real
 `list-display-json` and runs the QML tests of `tests/qml/` against that output.

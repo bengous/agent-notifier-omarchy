@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# The Rust gates: format, lints, tests.
+set -euo pipefail
+
+REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+MANIFEST="${REPO_DIR}/Cargo.toml"
+
+cargo fmt --manifest-path "${MANIFEST}" --check
+cargo clippy --manifest-path "${MANIFEST}" --all-targets -- -D warnings
+cargo test --manifest-path "${MANIFEST}"

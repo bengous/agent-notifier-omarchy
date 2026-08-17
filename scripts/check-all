@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Every gate the CI runs, in the order it reports them.
+set -euo pipefail
+
+REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+GATES=(
+  scripts/check
+  scripts/check-modules
+  tests/qml/run.sh
+)
+
+for gate in "${GATES[@]}"; do
+  echo "==> ${gate}"
+  "${REPO_DIR}/${gate}"
+done
+
+echo "==> all gates passed"

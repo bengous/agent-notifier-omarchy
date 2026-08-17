@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# The module-graph gate: no source file falls out of the tree.
+set -euo pipefail
+
+REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+fail() {
+  echo "agent-notifier: $1" >&2
+  exit 1
+}
+
+command -v cargo-modules >/dev/null ||
+  fail "cargo-modules is missing; install it with 'cargo install cargo-modules --locked'"
+
+# --cfg-test: every `mod tests;` sits behind #[cfg(test)], so without it each
+# tests.rs reads as an orphan. Acyclicity is checked in tests/architecture.rs;
+# `cargo modules dependencies --acyclic` reports a false cycle between a type
+# and its own constructor.
+cargo modules orphans --manifest-path "${REPO_DIR}/Cargo.toml" --deny --cfg-test
