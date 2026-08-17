@@ -5,7 +5,10 @@ import qs.Ui
 Column {
   id: root
 
-  required property string title
+  // Named section by contract: a section delegate that declares required
+  // properties gets the section value injected into exactly this name, and
+  // the context-property fallback is switched off.
+  required property string section
   property color foreground: Color.foreground
   property string fontFamily: Style.font.family
 
@@ -20,7 +23,7 @@ Column {
     width: parent.width
     leftPadding: Style.spacing.rowPaddingX
     rightPadding: Style.spacing.rowPaddingX
-    text: root.title
+    text: root.section
     foreground: root.foreground
     fontFamily: root.fontFamily
     elide: Text.ElideRight

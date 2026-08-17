@@ -255,7 +255,6 @@ BarWidget {
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
         section.delegate: ProjectSection {
-          title: section
           foreground: root.foreground
           fontFamily: root.fontFamily
         }
