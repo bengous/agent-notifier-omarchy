@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "components"
 import "js/time.js" as Time
 
 BarWidget {
@@ -70,7 +71,6 @@ BarWidget {
       refreshQueued = true
       return
     }
-    listProcess.exitSeen = false
     listProcess.running = true
   }
 
@@ -98,8 +98,6 @@ BarWidget {
       root.versionInfo = parsed
   }
 
-  // A binary that is not on PATH never reaches onExited: Process reverts
-  // running to false on a failed start, and that is the only signal QML gets.
   function reportMissingCli() {
     if (cliMissing) return
     cliMissing = true
@@ -115,7 +113,6 @@ BarWidget {
     if (commandProcess.running || pendingCommands.length === 0) return
     var next = pendingCommands[0]
     pendingCommands = pendingCommands.slice(1)
-    commandProcess.exitSeen = false
     commandProcess.command = ["agent-notifier"].concat(next)
     commandProcess.running = true
   }
@@ -157,29 +154,12 @@ BarWidget {
     onLoadFailed: root.refresh()
   }
 
-  Process {
+  CliProcess {
     id: listProcess
-    property bool exitSeen: false
     command: ["agent-notifier", "list-display-json"]
-
-    stdout: StdioCollector {
-      id: listOutput
-      waitForEnd: true
-    }
-
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: if (text.trim() !== "") console.warn("agent-notifier", text.trim())
-    }
-
-    onExited: function(exitCode) {
-      exitSeen = true
-      if (exitCode === 0) root.applyDisplayState(listOutput.text)
-    }
-
-    onRunningChanged: {
-      if (running) return
-      if (!exitSeen) root.reportMissingCli()
+    onSucceeded: function(stdout) { root.applyDisplayState(stdout) }
+    onStartFailed: root.reportMissingCli()
+    onSettled: {
       if (root.refreshQueued) {
         root.refreshQueued = false
         root.refresh()
@@ -187,39 +167,18 @@ BarWidget {
     }
   }
 
-  Process {
+  CliProcess {
     id: versionProcess
     running: true
     command: ["agent-notifier", "version-json"]
-
-    stdout: StdioCollector {
-      id: versionOutput
-      waitForEnd: true
-    }
-
-    stderr: StdioCollector { waitForEnd: true }
-
-    onExited: function(exitCode) {
-      if (exitCode === 0) root.applyVersionInfo(versionOutput.text)
-    }
+    warnStderr: false
+    onSucceeded: function(stdout) { root.applyVersionInfo(stdout) }
   }
 
-  Process {
+  CliProcess {
     id: commandProcess
-    property bool exitSeen: false
-
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: if (text.trim() !== "") console.warn("agent-notifier", text.trim())
-    }
-
-    onExited: exitSeen = true
-
-    onRunningChanged: {
-      if (running) return
-      if (!exitSeen) root.reportMissingCli()
-      root.pumpCommands()
-    }
+    onStartFailed: root.reportMissingCli()
+    onSettled: root.pumpCommands()
   }
 
   BarIconButton {

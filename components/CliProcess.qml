@@ -1,0 +1,38 @@
+import Quickshell.Io
+
+Process {
+  id: root
+
+  property bool warnStderr: true
+  property bool exitSeen: false
+
+  signal succeeded(string stdout)
+  signal startFailed()
+  signal settled()
+
+  stdout: StdioCollector {
+    id: collectedStdout
+    waitForEnd: true
+  }
+
+  stderr: StdioCollector {
+    waitForEnd: true
+    onStreamFinished: if (root.warnStderr && text.trim() !== "") console.warn("agent-notifier", text.trim())
+  }
+
+  onExited: function(exitCode) {
+    exitSeen = true
+    if (exitCode === 0) root.succeeded(collectedStdout.text)
+  }
+
+  // A binary that is not on PATH never reaches onExited: Process reverts
+  // running to false on a failed start, and that is the only signal QML gets.
+  onRunningChanged: {
+    if (running) {
+      exitSeen = false
+      return
+    }
+    if (!exitSeen) root.startFailed()
+    root.settled()
+  }
+}
