@@ -2,6 +2,11 @@
 # Runs the real BarWidget under a nested Hyprland, fills it with completions
 # captured by the real binary, opens the popup over the widget's own IPC and
 # photographs it.
+
+# The harness polls a compositor: the helpers below are predicates whose failure
+# is an answer rather than an error, so set -e is off inside them on purpose.
+# shellcheck disable=SC2310
+
 set -euo pipefail
 
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -14,6 +19,7 @@ NESTED_WIDTH=1280
 NESTED_HEIGHT=800
 NESTED_MARGIN=60
 CAPTURE_TIMEOUT_SECONDS=15
+HOST_WINDOW_TIMEOUT_SECONDS=15
 INJECTOR_CLASS="agent-notifier-injector"
 # An agent with no session title falls back to its window title, so the
 # injector's title is what those rows read on the screenshot.
@@ -201,18 +207,18 @@ wait_for "the nested compositor" 30 find_instance
 # reflows the user's layout on open and again on close; floating it at a fixed
 # size leaves the session alone and gives every run the same frame. The only
 # window the harness ever touches out there is the one it just opened.
-host_window_address() {
+host_window() {
   local clients
   clients=$(env HYPRLAND_INSTANCE_SIGNATURE="${HOST_INSTANCE}" hyprctl -j clients)
-  jq -er --argjson pid "${hyprland_pid}" 'map(select(.pid == $pid)) | .[0].address' <<<"${clients}"
+  jq -e --argjson pid "${hyprland_pid}" 'map(select(.pid == $pid)) | .[0]' <<<"${clients}"
 }
-host_window_exists() { host_window_address >/dev/null 2>&1; }
 
 # The host is Omarchy's Hyprland: its `hyprctl dispatch` is a Lua shorthand
 # for hl.dispatch(...), so classic dispatcher syntax fails with a parse error.
 float_host_window() {
-  local address
-  address=$(host_window_address)
+  local window address
+  window=$(host_window) || return 1
+  address=$(jq -r '.address' <<<"${window}")
   for command in \
     "hl.dsp.window.float({ action = \"on\", window = \"address:${address}\" })" \
     "hl.dsp.window.resize({ x = ${NESTED_WIDTH}, y = ${NESTED_HEIGHT}, window = \"address:${address}\" })" \
@@ -220,11 +226,26 @@ float_host_window() {
     env HYPRLAND_INSTANCE_SIGNATURE="${HOST_INSTANCE}" \
       hyprctl dispatch "${command}" >/dev/null
   done
+  window=$(host_window) || return 1
+  jq -e --argjson width "${NESTED_WIDTH}" --argjson height "${NESTED_HEIGHT}" \
+    '.floating and .size[0] == $width and .size[1] == $height' <<<"${window}" >/dev/null
+}
+
+# A resize aimed at a window the host still tiles does nothing, so the three
+# calls are re-asserted until the host reports the shape back. Losing that race
+# costs the fixed frame size, never the run.
+settle_host_window() {
+  local deadline=$((SECONDS + HOST_WINDOW_TIMEOUT_SECONDS))
+  while ((SECONDS < deadline)); do
+    float_host_window && return 0
+    sleep 0.2
+  done
+  return 1
 }
 
 if [[ -n ${HOST_INSTANCE} ]]; then
-  wait_for "the nested compositor window" 30 host_window_exists
-  float_host_window
+  settle_host_window ||
+    echo "agent-notifier: the harness window never reported ${NESTED_WIDTH}x${NESTED_HEIGHT} floating; capturing the shape the host gave it" >&2
 fi
 
 HYPRLAND_INSTANCE_SIGNATURE="$(<"${RUN_DIR}/instance")"
@@ -324,12 +345,24 @@ hyprctl dismissnotify >/dev/null
 # end: nothing here polls, the wait is the animation itself.
 sleep 0.5
 
-# grim rejects -o together with -g. It also waits for a frame that never comes
-# when the harness window is hidden or covered: the nested compositor gets no
-# frame callback from the host and stops rendering, so the wait is bounded.
+# A harness window the host stops showing takes the nested compositor's frame
+# callbacks with it, and grim then waits for a frame that never comes. The host
+# reporting `visible: false` is what predicts it; a fullscreen window elsewhere
+# on the session does not.
+capture_hint() {
+  local window
+  window=$(host_window 2>/dev/null) || return 0
+  if jq -e '.visible | not' <<<"${window}" >/dev/null 2>&1; then
+    echo "; the host reports the harness window as not visible, so the nested compositor stopped rendering"
+  fi
+  return 0
+}
+
+# grim rejects -o together with -g.
 if ! timeout "${CAPTURE_TIMEOUT_SECONDS}" \
   env WAYLAND_DISPLAY="${nested_display}" grim -o "${monitor}" "${screenshot}"; then
-  fail "no frame from ${monitor} in ${CAPTURE_TIMEOUT_SECONDS}s; the harness window is hidden or covered by a fullscreen window"
+  hint=$(capture_hint)
+  fail "no frame from ${monitor} in ${CAPTURE_TIMEOUT_SECONDS}s${hint}"
 fi
 [[ -s ${screenshot} ]] || fail "grim wrote no screenshot"
 screenshot_bytes=$(stat -c %s -- "${screenshot}")
