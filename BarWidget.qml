@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "."
 import "components"
 import "js/time.js" as Time
 
@@ -32,36 +33,10 @@ BarWidget {
     return lines.length === 0 ? "No agent completions" : lines.join("\n")
   }
 
-  readonly property string versionTooltip: {
-    if (!versionInfo) return "agent-notifier\nversion info unavailable"
-    var lines = ["agent-notifier " + versionInfo.version]
-    lines.push("commit " + versionInfo.commit + (versionInfo.dirty ? " (dirty)" : ""))
-    if (versionInfo.commitDate && versionInfo.commitDate !== "unknown")
-      lines.push("committed " + String(versionInfo.commitDate).slice(0, 10))
-    return lines.join("\n")
-  }
-
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
-  readonly property color dim: Qt.darker(foreground, 1.55)
+  readonly property color dim: Qt.darker(foreground, Theme.dimFactor)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-
-  readonly property var brandColors: ({ claude: "#d97757", codex: "#10a37f", pi: "#a78bfa" })
-
-  function brandColor(agent) {
-    var color = brandColors[String(agent || "").trim()]
-    return color ? color : Color.accent
-  }
-
-  // Same convention as omarchy.agents: assets/<agent>.svg, with a -light twin
-  // picked on light surfaces for marks that only ship in white.
-  function agentIcon(agent) {
-    var name = String(agent || "").trim()
-    if (name === "claude") return Qt.resolvedUrl("assets/claude.svg")
-    if (name === "codex")
-      return Qt.resolvedUrl(Color.background.hslLightness >= 0.5 ? "assets/codex-light.svg" : "assets/codex.svg")
-    return ""
-  }
 
   function refresh() {
     if (listProcess.running) {
@@ -138,7 +113,7 @@ BarWidget {
 
   Timer {
     running: root.popupOpen
-    interval: 30000
+    interval: Theme.relativeTimeRefreshMs
     repeat: true
     triggeredOnStart: true
     onTriggered: root.nowMs = Date.now()
@@ -279,136 +254,18 @@ BarWidget {
         section.property: "displayProject"
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-        section.delegate: Column {
-          width: ListView.view.width
-          spacing: Style.spacing.sm
-
-          PanelSeparator {
-            foreground: root.foreground
-          }
-
-          PanelSectionHeader {
-            width: parent.width
-            leftPadding: Style.spacing.rowPaddingX
-            rightPadding: Style.spacing.rowPaddingX
-            text: section
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            elide: Text.ElideRight
-          }
+        section.delegate: ProjectSection {
+          title: section
+          foreground: root.foreground
+          fontFamily: root.fontFamily
         }
 
-        delegate: Rectangle {
-          id: eventRow
-          required property var modelData
-
-          readonly property bool unread: String(modelData.status) === "unread"
-
-          width: ListView.view.width
-          implicitHeight: rowText.implicitHeight + Style.spacing.rowGap * 2
-          radius: Style.cornerRadius
-          color: rowHover.pressed ? Style.pressedFill : rowHover.containsMouse ? Style.hoverFill : "transparent"
-
-          Behavior on color {
-            ColorAnimation { duration: 120 }
-          }
-
-          // Brand-colored unread rail: encodes which agent and unread in one
-          // element. It sits inside the rowPaddingX inset, so read and unread
-          // titles stay aligned.
-          Rectangle {
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            anchors.leftMargin: Style.space(4)
-            anchors.topMargin: Style.space(6)
-            anchors.bottomMargin: Style.space(6)
-            width: Style.space(3)
-            radius: width / 2
-            color: root.brandColor(eventRow.modelData.agent)
-            opacity: eventRow.unread ? 1 : 0
-          }
-
-          Column {
-            id: rowText
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: Style.spacing.rowPaddingX
-            anchors.rightMargin: Style.spacing.rowPaddingX
-            spacing: Style.space(2)
-
-            Text {
-              width: parent.width
-              text: String(eventRow.modelData.displayLabel || "")
-              color: eventRow.unread ? root.foreground : root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              font.bold: eventRow.unread
-              elide: Text.ElideRight
-            }
-
-            Row {
-              id: metaRow
-              width: parent.width
-              spacing: Style.space(6)
-
-              Row {
-                id: agentMark
-                spacing: Style.space(4)
-                anchors.verticalCenter: parent.verticalCenter
-                opacity: eventRow.unread ? 1 : 0.6
-
-                readonly property string icon: root.agentIcon(eventRow.modelData.agent)
-
-                Image {
-                  visible: agentMark.icon !== ""
-                  source: agentMark.icon
-                  width: Style.font.body
-                  height: Style.font.body
-                  sourceSize.width: width
-                  sourceSize.height: height
-                  fillMode: Image.PreserveAspectFit
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Rectangle {
-                  visible: agentMark.icon === ""
-                  width: Style.space(6)
-                  height: Style.space(6)
-                  radius: height / 2
-                  color: root.brandColor(eventRow.modelData.agent)
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-
-                Text {
-                  text: String(eventRow.modelData.agent || "").trim()
-                  color: root.brandColor(eventRow.modelData.agent)
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  anchors.verticalCenter: parent.verticalCenter
-                }
-              }
-
-              Text {
-                width: metaRow.width - agentMark.width - metaRow.spacing
-                text: Time.relativeTime(eventRow.modelData.createdAt, root.nowMs)
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                elide: Text.ElideRight
-                anchors.verticalCenter: parent.verticalCenter
-              }
-            }
-          }
-
-          MouseArea {
-            id: rowHover
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.activateEvent(eventRow.modelData)
-          }
+        delegate: EventRow {
+          foreground: root.foreground
+          dim: root.dim
+          fontFamily: root.fontFamily
+          nowMs: root.nowMs
+          onActivated: function(event) { root.activateEvent(event) }
         }
       }
 
@@ -435,22 +292,11 @@ BarWidget {
         Layout.fillWidth: true
         spacing: Style.spacing.sm
 
-        FooterButton {
-          id: infoButton
-          iconText: "󰋼"
-          iconSize: Style.font.iconSmall
+        VersionInfo {
+          info: root.versionInfo
           hotForeground: root.foreground
           idleForeground: root.dim
           fontFamily: root.fontFamily
-
-          // Button's built-in tooltip centers on the button and would clip
-          // outside the card-sized popup surface; x: 0 keeps it inside.
-          PanelToolTip {
-            visible: infoButton.hot
-            text: root.versionTooltip
-            fontFamily: root.fontFamily
-            x: 0
-          }
         }
 
         Item { Layout.fillWidth: true }

@@ -64,10 +64,18 @@ and `/usr/local/share/agent-notifier` after `install.sh`), the state directory
 ## Plugin files
 
 - `manifest.json` — plugin manifest (`kinds: ["bar-widget"]`, id `io.github.bengous.agent-notifier`).
-- `BarWidget.qml` — the whole widget: bar icon with an unread badge, and a popup
-  listing completions. It watches the state file and reads through
-  `agent-notifier list-display-json` and `agent-notifier version-json`; clicking
-  a row runs `focus-id`, and the popup buttons run `clear-read` and `clear-all`.
+- `BarWidget.qml` — entry point: the bar icon with its unread badge, plus the
+  popup assembled from `components/`. It reads through
+  `agent-notifier list-display-json` and `agent-notifier version-json`, and
+  watches the state file at the `statePath` that `version-json` reports;
+  clicking a row runs `focus-id`, and the popup buttons run `clear-read` and
+  `clear-all`.
+- `components/` — one component per file: CLI process plumbing, event row,
+  project section header, footer button, version block.
+- `Theme.qml` + `qmldir` — the widget's local tokens (per-agent brand colors,
+  animation and refresh timings) as a QML singleton; sizes and typography come
+  from omarchy's `Style.*`.
+- `js/time.js` — relative/absolute time formatting, tested from `tests/qml/`.
 
 Prefer a plain bar module over the plugin? `agent-notifier status-json` emits
 `{"text","tooltip","class"}` for a `"type": "command"` entry in your

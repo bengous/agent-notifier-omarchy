@@ -10,6 +10,7 @@ paths:
 
 - `BarWidget.qml` is assembly only (target < ~150 lines); every new piece of UI is a new component file in `components/`.
 - Tokens: omarchy `Style.*` is the only source for sizes and typography — never duplicated. `Theme.qml` holds only what `Style.*` lacks: per-agent brand colors, animation durations, refresh intervals, derived color factors. Zero magic numbers inside components.
+- `Theme.qml` is a singleton declared in the root `qmldir`, and qmldir singletons resolve only through an explicit directory import: `import "."` in `BarWidget.qml`, `import ".."` in `components/`. The `qmldir` also names `BarWidget` so directory imports of the plugin (the harness shell) keep seeing it.
 - Shared JS: one file per concept in `js/` (`js/time.js` first); extract at the second consumer; prefer native Qt/JS APIs before writing a helper; never `lib.js`/`utils.js`/`helpers.js`.
 - Coerce every external datum at the parse boundary (`String()`, defaults under try/catch); report errors with `console.warn("agent-notifier", ...)`.
 - The widget contract lists exactly the JSON keys the QML reads, and both sides hold it: `display_state_exposes_exactly_the_keys_the_widget_reads` in Rust, `tests/qml/DisplayContract.qml` in QML. A new key you consume joins both, and nothing else does.
