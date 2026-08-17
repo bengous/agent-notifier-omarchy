@@ -8,3 +8,5 @@
 
 - `assets/claude.svg`, `assets/codex.svg`, `assets/codex-light.svg`: copied from the
   Omarchy shell first-party `agents` plugin (basecamp/omarchy, MIT).
+- `assets/pi.svg`: self-authored π mark in pi's brand color (Augustin Bengolea,
+  CC0-1.0).

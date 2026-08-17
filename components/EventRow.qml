@@ -24,6 +24,7 @@ Rectangle {
     if (agent === "claude") return Qt.resolvedUrl("../assets/claude.svg")
     if (agent === "codex")
       return Qt.resolvedUrl(Color.background.hslLightness >= 0.5 ? "../assets/codex-light.svg" : "../assets/codex.svg")
+    if (agent === "pi") return Qt.resolvedUrl("../assets/pi.svg")
     return ""
   }
 
