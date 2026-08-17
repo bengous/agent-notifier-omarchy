@@ -15,7 +15,7 @@ One concept, one name — in code, docs, and tests:
 ## Architecture invariants
 
 - Decisions are pure state → state functions; I/O executes at the edge (`FocusOutcome` is the reference pattern). New policy is born in a pure core and tested there.
-- One system boundary = one module: all Hyprland talk (commands, protocol, reconnection) belongs to the Hyprland module; /proc and subprocess spawning go only through the process helpers (timeout mandatory).
+- One system boundary = one module: all Hyprland talk (commands, protocol, reconnection) belongs to `window/hyprland.rs`; /proc reads to `window/proc.rs`; subprocess spawning goes only through `exec.rs` (timeout mandatory).
 - Command handlers sequence; they never branch on domain logic.
 - A read command never writes — except the mark-read-on-focus contract: `status-json` and `list-display-json` deliberately mark the focused window's events read.
 - No trait while a seam has a single adapter. No per-agent pipeline: one event builder; agents vary in data only.
