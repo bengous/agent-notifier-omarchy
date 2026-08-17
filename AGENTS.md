@@ -32,7 +32,7 @@ One concept, one name — in code, docs, and tests:
 - Comments: only irreplaceable "why" (external constraint, workaround, contract policy). No paraphrase, no history. A comment describing observable behavior becomes a test or cites its source.
 - `pub(crate)` by default; English everywhere; stderr messages prefixed `agent-notifier: `.
 - Tests: behavior-sentence names, `Result<_, Box<dyn Error>>`, layered fixtures.
-- QML: sizes and typography via omarchy `Style.*` tokens; local tokens live in one place; coerce all external data defensively; one component per file; shared JS in `js/<concept>.js` — never `lib`/`utils`; prefer native Qt/JS APIs over hand-rolled helpers.
+- QML: sizes and typography via omarchy `Style.*` tokens; local tokens live in one place; coerce all external data defensively; one component per file; shared JS in `widget/js/<concept>.js` — never `lib`/`utils`; prefer native Qt/JS APIs over hand-rolled helpers.
 
 ## Keeping these docs honest
 

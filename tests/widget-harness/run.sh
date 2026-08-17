@@ -131,6 +131,8 @@ chmod +x "${RUN_DIR}/bin/notify-send"
 # Commons are all the real widget needs to run outside omarchy-shell.
 ln -s "${OMARCHY_SHELL_DIR}/Ui" "${RUN_DIR}/shell/Ui"
 ln -s "${OMARCHY_SHELL_DIR}/Commons" "${RUN_DIR}/shell/Commons"
+# The link is the plugin root, never widget/: the components read assets/ one
+# level above themselves, and Qt resolves that against the linked path.
 ln -s "${REPO_DIR}" "${RUN_DIR}/shell/AgentNotifier"
 cp "${HARNESS_DIR}/shell.qml" "${RUN_DIR}/shell/shell.qml"
 

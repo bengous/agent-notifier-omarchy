@@ -3,7 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
-import "AgentNotifier" as Plugin
+import "AgentNotifier/widget" as Plugin
 
 ShellRoot {
   id: root

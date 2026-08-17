@@ -34,5 +34,5 @@ UNRESOLVABLE_IMPORTS=(
 # directory, and qmllint files a warning under a different category when they
 # do not; -W turns the warnings it keeps into a gate, which they are not by
 # default.
-cd -- "${REPO_DIR}"
+cd -- "${REPO_DIR}/widget"
 "${linter}" "${UNRESOLVABLE_IMPORTS[@]}" -W 0 BarWidget.qml Theme.qml components/*.qml

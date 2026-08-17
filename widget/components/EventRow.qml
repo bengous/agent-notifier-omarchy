@@ -21,10 +21,10 @@ Rectangle {
   // Same convention as omarchy.agents: assets/<agent>.svg, with a -light twin
   // picked on light surfaces for marks that only ship in white.
   readonly property string agentIcon: {
-    if (agent === "claude") return Qt.resolvedUrl("../assets/claude.svg")
+    if (agent === "claude") return Qt.resolvedUrl("../../assets/claude.svg")
     if (agent === "codex")
-      return Qt.resolvedUrl(Color.background.hslLightness >= 0.5 ? "../assets/codex-light.svg" : "../assets/codex.svg")
-    if (agent === "pi") return Qt.resolvedUrl("../assets/pi.svg")
+      return Qt.resolvedUrl(Color.background.hslLightness >= 0.5 ? "../../assets/codex-light.svg" : "../../assets/codex.svg")
+    if (agent === "pi") return Qt.resolvedUrl("../../assets/pi.svg")
     return ""
   }
 

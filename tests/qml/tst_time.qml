@@ -1,6 +1,6 @@
 import QtQuick
 import QtTest
-import "../../js/time.js" as Time
+import "../../widget/js/time.js" as Time
 
 TestCase {
   name: "Time"

@@ -7,7 +7,7 @@
   "license": "MIT",
   "description": "Agent completion center: see which agent finished where, jump to its window.",
   "kinds": ["bar-widget"],
-  "entryPoints": { "barWidget": "BarWidget.qml" },
+  "entryPoints": { "barWidget": "widget/BarWidget.qml" },
   "barWidget": {
     "displayName": "Agent Notifier",
     "description": "Unread completions from Claude Code, Codex, and Pi, with one click to focus the window that finished.",
