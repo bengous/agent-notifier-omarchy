@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "js/time.js" as Time
 
 BarWidget {
   id: root
@@ -24,22 +25,12 @@ BarWidget {
 
   onPopupOpenChanged: if (popupOpen) refresh()
 
-  readonly property int unreadCount: {
-    var count = 0
-    for (var i = 0; i < events.length; i++)
-      if (String(events[i].status) === "unread") count++
-    return count
-  }
+  readonly property int unreadCount: events.filter(event => String(event.status) === "unread").length
 
-  // One unread completion per line, the same order the state file keeps
-  // them in.
   readonly property string tooltipLines: {
-    var lines = []
-    for (var i = 0; i < events.length; i++) {
-      var event = events[i]
-      if (String(event.status) !== "unread") continue
-      lines.push(String(event.displayLabel || "") + " " + root.absoluteTime(event.createdAt))
-    }
+    var lines = events
+      .filter(event => String(event.status) === "unread")
+      .map(event => String(event.displayLabel || "") + " " + Time.absoluteTime(event.createdAt))
     return lines.length === 0 ? "No agent completions" : lines.join("\n")
   }
 
@@ -72,27 +63,6 @@ BarWidget {
     if (name === "codex")
       return Qt.resolvedUrl(Color.background.hslLightness >= 0.5 ? "assets/codex-light.svg" : "assets/codex.svg")
     return ""
-  }
-
-  function relativeTime(createdAt, nowMs) {
-    var moment = new Date(String(createdAt || ""))
-    if (isNaN(moment.getTime())) return String(createdAt || "")
-    var minutes = Math.floor((nowMs - moment.getTime()) / 60000)
-    if (minutes < 1) return "just now"
-    if (minutes < 60) return minutes + " min ago"
-    return root.absoluteTime(createdAt)
-  }
-
-  function absoluteTime(createdAt) {
-    var moment = new Date(String(createdAt || ""))
-    if (isNaN(moment.getTime())) return String(createdAt || "")
-    var now = new Date()
-    var startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    var startOfDay = new Date(moment.getFullYear(), moment.getMonth(), moment.getDate())
-    var days = Math.round((startOfToday.getTime() - startOfDay.getTime()) / 86400000)
-    if (days < 1) return Qt.formatDateTime(moment, "HH:mm")
-    if (days < 6) return Qt.formatDateTime(moment, "ddd HH:mm")
-    return Qt.formatDateTime(moment, "MMM d HH:mm")
   }
 
   function refresh() {
@@ -461,7 +431,7 @@ BarWidget {
 
               Text {
                 width: metaRow.width - agentMark.width - metaRow.spacing
-                text: root.relativeTime(eventRow.modelData.createdAt, root.nowMs)
+                text: Time.relativeTime(eventRow.modelData.createdAt, root.nowMs)
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
