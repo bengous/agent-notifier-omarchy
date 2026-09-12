@@ -1,5 +1,18 @@
 # Agent Notifier for Omarchy
 
+> **Archived. No longer maintained.**
+>
+> I wrote this for one need: knowing when an agent had finished. I had run it
+> privately for months, and made it public around the Omarchy 4 release.
+>
+> Since then I moved to [Herdr](https://herdr.dev), a terminal workspace manager
+> for AI coding agents. It holds every agent in one terminal, with sound
+> notifications and visual state indicators. It answers a broader problem than
+> this widget does, and it covers my original need along the way.
+>
+> So I prefer to archive this project. The code stays here, read-only, for
+> anyone who wants to read or fork it.
+
 An agent completion center for the Omarchy bar.
 
 `agent-notifier` turns Codex, Claude Code, and Pi completion hooks into desktop
